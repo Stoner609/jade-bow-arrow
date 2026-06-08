@@ -2,7 +2,7 @@ extends RefCounted
 
 const VIEW_SIZE := Vector2(540, 960)
 const ARENA := Rect2(Vector2(34, 118), Vector2(472, 686))
-const MAX_ROOMS := 6
+const MAX_ROOMS := 8
 const PLAYER_RADIUS := 18.0
 const ENEMY_RADIUS := 19.0
 const ARROW_RADIUS := 6.0

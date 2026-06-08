@@ -21,6 +21,9 @@ enum Mode { PLAYING, UPGRADE, DEAD, WON }
 var rng := RandomNumberGenerator.new()
 var mode := Mode.PLAYING
 var room_index := 1
+var wave_index := 0
+var total_waves := 1
+var wave_break_timer := 0.0
 var elapsed := 0.0
 var room_clear := false
 var fire_timer := 0.0
@@ -63,6 +66,7 @@ func _process(delta: float) -> void:
 	_update_enemies(delta)
 	_update_pickups()
 	_update_floating_texts(delta)
+	_update_wave_flow(delta)
 	_check_room_clear()
 	_refresh()
 
@@ -132,6 +136,9 @@ func _draw() -> void:
 func _new_run() -> void:
 	mode = Mode.PLAYING
 	room_index = 1
+	wave_index = 0
+	total_waves = 1
+	wave_break_timer = 0.0
 	elapsed = 0.0
 	fire_timer = 0.0
 	damage_flash = 0.0
@@ -157,12 +164,23 @@ func _spawn_room() -> void:
 	arrows.clear()
 	enemy_shots.clear()
 	pickups.clear()
+	wave_break_timer = 0.0
 	_generate_obstacles()
+	total_waves = RoomManager.wave_count(room_index, Constants.MAX_ROOMS)
+	wave_index = 0
+	_start_next_wave()
 
-	var count := 4 + room_index * 2
-	for i in count:
-		var kind := EnemyModel.choose_kind(room_index, rng)
+
+# 用途：產生目前房間的下一波敵人。
+func _start_next_wave() -> void:
+	wave_index += 1
+	var wave: Array[String] = RoomManager.enemy_wave(room_index, wave_index, Constants.MAX_ROOMS)
+	for kind in wave:
 		_spawn_enemy(kind)
+	if room_index >= Constants.MAX_ROOMS:
+		_log("Final room. Defeat the boss.")
+	else:
+		_log("Room %d/%d - Wave %d/%d." % [room_index, Constants.MAX_ROOMS, wave_index, total_waves])
 
 
 # 用途：依照房間編號產生不同配置的場地障礙物。
@@ -263,7 +281,15 @@ func _update_enemies(delta: float) -> void:
 
 		var to_player: Vector2 = player.pos - enemy.pos
 		var distance: float = to_player.length()
-		if enemy.kind == "spitter" and distance < 520.0:
+		if enemy.kind == "boss" and distance < 620.0:
+			if distance < 300.0:
+				enemy.pos -= to_player.normalized() * float(enemy.speed) * 0.35 * delta
+			elif distance > 420.0:
+				enemy.pos += to_player.normalized() * float(enemy.speed) * delta
+			if enemy.shoot_cd <= 0.0:
+				_fire_enemy_spread(enemy.pos, to_player.normalized(), 5, 0.22)
+				enemy.shoot_cd = rng.randf_range(1.0, 1.35)
+		elif enemy.kind == "spitter" and distance < 520.0:
 			if distance < 220.0:
 				enemy.pos -= to_player.normalized() * float(enemy.speed) * 0.7 * delta
 			if enemy.shoot_cd <= 0.0:
@@ -272,10 +298,11 @@ func _update_enemies(delta: float) -> void:
 		else:
 			enemy.pos += to_player.normalized() * float(enemy.speed) * delta
 
-		enemy.pos = _clamp_to_arena(enemy.pos, Constants.ENEMY_RADIUS)
-		enemy.pos = _push_out_of_obstacles(enemy.pos, Constants.ENEMY_RADIUS)
+		var radius: float = enemy.get("radius", Constants.ENEMY_RADIUS)
+		enemy.pos = _clamp_to_arena(enemy.pos, radius)
+		enemy.pos = _push_out_of_obstacles(enemy.pos, radius)
 
-		if distance <= Constants.PLAYER_RADIUS + Constants.ENEMY_RADIUS + 2.0 and enemy.hit_cd <= 0.0:
+		if distance <= Constants.PLAYER_RADIUS + radius + 2.0 and enemy.hit_cd <= 0.0:
 			_damage_player(int(enemy.touch))
 			enemy.hit_cd = 0.75
 
@@ -283,6 +310,15 @@ func _update_enemies(delta: float) -> void:
 # 用途：從指定位置朝指定方向產生敵人的遠程子彈。
 func _fire_enemy_shot(origin: Vector2, direction: Vector2) -> void:
 	enemy_shots.append(EnemyShotModel.create(origin, direction, room_index))
+
+
+# 用途：讓 Boss 或特殊敵人一次發射多顆散射子彈。
+func _fire_enemy_spread(origin: Vector2, direction: Vector2, count: int, spread: float) -> void:
+	for i in count:
+		var offset := 0.0
+		if count > 1:
+			offset = (float(i) - float(count - 1) * 0.5) * spread
+		_fire_enemy_shot(origin, direction.rotated(offset))
 
 
 # 用途：更新敵人子彈飛行、撞牆消失與命中玩家傷害。
@@ -308,11 +344,13 @@ func _damage_enemy(index: int, damage: int, direction: Vector2) -> void:
 	enemy.pos += direction * 8.0
 	floating_texts.append({"pos": enemy.pos + Vector2(-12, -24), "text": str(damage), "color": Color(1.0, 0.9, 0.22), "life": 0.65})
 	if enemy.hp <= 0:
-		var xp_value: int = 4 + room_index
+		var xp_value: int = 24 if enemy.kind == "boss" else 4 + room_index
 		var drop_pos: Vector2 = enemy.pos
 		enemies.remove_at(index)
 		pickups.append(PickupModel.xp(drop_pos, xp_value))
-		if rng.randf() < 0.16:
+		if enemy.kind == "boss":
+			pickups.append(PickupModel.heart(drop_pos + Vector2(20, 12), 28))
+		elif rng.randf() < 0.16:
 			pickups.append(PickupModel.heart(drop_pos + Vector2(rng.randf_range(-18, 18), rng.randf_range(-18, 18)), 12))
 
 
@@ -377,10 +415,26 @@ func _take_upgrade(index: int) -> void:
 func _check_room_clear() -> void:
 	if room_clear or enemies.size() > 0:
 		return
+	if wave_index < total_waves:
+		if wave_break_timer <= 0.0:
+			wave_break_timer = 1.15
+			arrows.clear()
+			enemy_shots.clear()
+			_log("Wave clear. Next wave incoming.")
+		return
 	room_clear = true
 	arrows.clear()
 	enemy_shots.clear()
 	_log("Room clear. Enter the glowing gate.")
+
+
+# 用途：處理波次之間的短暫間隔，倒數結束後生成下一波敵人。
+func _update_wave_flow(delta: float) -> void:
+	if wave_break_timer <= 0.0 or enemies.size() > 0 or room_clear:
+		return
+	wave_break_timer -= delta
+	if wave_break_timer <= 0.0 and wave_index < total_waves:
+		_start_next_wave()
 
 
 # 用途：玩家進入傳送門後推進到下一房，或在最後房間通關。
@@ -390,7 +444,8 @@ func _advance_room() -> void:
 		_log("Chapter cleared. Press R for another run.")
 		return
 	room_index += 1
-	player.hp = min(int(player.max_hp), int(player.hp) + 10)
+	var room_heal := 16 if room_index == Constants.MAX_ROOMS else 10
+	player.hp = min(int(player.max_hp), int(player.hp) + room_heal)
 	player.pos = _player_start_position()
 	_spawn_room()
 	_log("Room %d/%d. Keep moving between shots." % [room_index, Constants.MAX_ROOMS])
@@ -418,7 +473,8 @@ func _nearest_enemy_to(pos: Vector2, ignored: int) -> int:
 # 用途：檢查指定圓形範圍是否命中敵人，回傳命中的敵人索引。
 func _enemy_hit_by(pos: Vector2, radius: float) -> int:
 	for i in enemies.size():
-		if pos.distance_to(enemies[i].pos) <= radius + Constants.ENEMY_RADIUS:
+		var enemy_radius: float = enemies[i].get("radius", Constants.ENEMY_RADIUS)
+		if pos.distance_to(enemies[i].pos) <= radius + enemy_radius:
 			return i
 	return -1
 
@@ -475,7 +531,7 @@ func _update_floating_texts(delta: float) -> void:
 # 用途：更新 HUD、訊息紀錄文字，並要求畫面重新繪製。
 func _refresh() -> void:
 	var xp_needed: int = _xp_needed()
-	hud.text = HudPresenter.hud_text(room_index, Constants.MAX_ROOMS, player, xp_needed)
+	hud.text = HudPresenter.hud_text(room_index, Constants.MAX_ROOMS, wave_index, total_waves, player, xp_needed)
 	log_label.text = HudPresenter.recent_messages(messages, 3)
 	queue_redraw()
 
@@ -551,11 +607,13 @@ func _draw_enemy_shots() -> void:
 func _draw_enemies() -> void:
 	for enemy in enemies:
 		var color: Color = EnemyModel.color_for(enemy.kind)
-		draw_circle(enemy.pos, Constants.ENEMY_RADIUS + 5.0, Color(color.r, color.g, color.b, 0.22))
-		draw_circle(enemy.pos, Constants.ENEMY_RADIUS, color)
-		draw_circle(enemy.pos + Vector2(-6, -5), 3.0, Color(0.05, 0.05, 0.05))
-		draw_circle(enemy.pos + Vector2(6, -5), 3.0, Color(0.05, 0.05, 0.05))
-		var bar := Rect2(enemy.pos + Vector2(-24, -34), Vector2(48, 6))
+		var radius: float = enemy.get("radius", Constants.ENEMY_RADIUS)
+		draw_circle(enemy.pos, radius + 5.0, Color(color.r, color.g, color.b, 0.22))
+		draw_circle(enemy.pos, radius, color)
+		draw_circle(enemy.pos + Vector2(-radius * 0.32, -radius * 0.25), 3.0, Color(0.05, 0.05, 0.05))
+		draw_circle(enemy.pos + Vector2(radius * 0.32, -radius * 0.25), 3.0, Color(0.05, 0.05, 0.05))
+		var bar_width := 72.0 if enemy.kind == "boss" else 48.0
+		var bar := Rect2(enemy.pos + Vector2(-bar_width * 0.5, -radius - 16), Vector2(bar_width, 6))
 		draw_rect(bar, Color(0.12, 0.12, 0.12))
 		draw_rect(Rect2(bar.position, Vector2(bar.size.x * max(0.0, float(enemy.hp) / float(enemy.max_hp)), bar.size.y)), Color(0.26, 1.0, 0.2))
 

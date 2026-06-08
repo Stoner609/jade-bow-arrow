@@ -1,9 +1,11 @@
 extends RefCounted
 
-static func hud_text(room_index: int, max_rooms: int, player: Dictionary, xp_needed: int) -> String:
-	return "Room %d/%d   HP %d/%d   Lv.%d\nXP %d/%d   DMG %d   Arrows %d" % [
+static func hud_text(room_index: int, max_rooms: int, wave_index: int, total_waves: int, player: Dictionary, xp_needed: int) -> String:
+	return "Room %d/%d   Wave %d/%d   HP %d/%d\nLv.%d   XP %d/%d   DMG %d   Arrows %d" % [
 		room_index,
 		max_rooms,
+		wave_index,
+		total_waves,
 		player.hp,
 		player.max_hp,
 		player.level,

@@ -21,3 +21,35 @@ static func player_start_position(arena: Rect2) -> Vector2:
 
 static func gate_position(arena: Rect2) -> Vector2:
 	return Vector2(arena.get_center().x, arena.position.y + 26)
+
+
+static func wave_count(room_index: int, max_rooms: int) -> int:
+	if room_index >= max_rooms:
+		return 1
+	if room_index <= 2:
+		return 1
+	if room_index <= 5:
+		return 2
+	return 3
+
+
+static func enemy_wave(room_index: int, wave_index: int, max_rooms: int) -> Array[String]:
+	if room_index >= max_rooms:
+		return ["boss"]
+
+	var enemies: Array[String] = []
+	var crawler_count: int = 3 + room_index + wave_index
+	for i in crawler_count:
+		enemies.append("crawler")
+
+	if room_index >= 2:
+		enemies.append("spitter")
+	if room_index >= 4:
+		enemies.append("runner")
+	if room_index >= 5 and wave_index >= 2:
+		enemies.append("brute")
+	if room_index >= 7:
+		enemies.append("spitter")
+		enemies.append("runner")
+
+	return enemies

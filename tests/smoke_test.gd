@@ -27,6 +27,10 @@ func _run() -> void:
 		push_error("Enemies were not spawned.")
 		quit(1)
 		return
+	if game.total_waves <= 0 or game.wave_index <= 0:
+		push_error("Room wave state was not initialized.")
+		quit(1)
+		return
 
 	game.fire_timer = 0.0
 	game._fire_at_nearest_enemy()
@@ -38,6 +42,7 @@ func _run() -> void:
 
 	var original_room: int = game.room_index
 	game.enemies.clear()
+	game.wave_index = game.total_waves
 	game._check_room_clear()
 	if not game.room_clear:
 		push_error("Room clear state was not detected.")
@@ -48,6 +53,13 @@ func _run() -> void:
 	game._advance_room()
 	if game.room_index <= original_room:
 		push_error("Gate did not advance to the next room.")
+		quit(1)
+		return
+
+	game.room_index = game.Constants.MAX_ROOMS
+	game._spawn_room()
+	if game.total_waves != 1 or game.enemies.is_empty() or game.enemies[0].kind != "boss":
+		push_error("Boss room did not spawn the expected boss wave.")
 		quit(1)
 		return
 
