@@ -1,16 +1,16 @@
 extends Node2D
 
-const VIEW_SIZE := Vector2(540, 960)
-const ARENA := Rect2(Vector2(34, 118), Vector2(472, 686))
-const MAX_ROOMS := 6
-const PLAYER_RADIUS := 18.0
-const ENEMY_RADIUS := 19.0
-const ARROW_RADIUS := 6.0
-const PICKUP_RADIUS := 12.0
-const GATE_RADIUS := 38.0
-const JOYSTICK_CENTER := Vector2(104, 846)
-const JOYSTICK_RADIUS := 58.0
-const JOYSTICK_KNOB_RADIUS := 24.0
+const Constants := preload("res://scripts/core/constants.gd")
+const PlayerModel := preload("res://scripts/actors/player.gd")
+const EnemyModel := preload("res://scripts/actors/enemy.gd")
+const ArrowModel := preload("res://scripts/projectiles/arrow.gd")
+const EnemyShotModel := preload("res://scripts/projectiles/enemy_shot.gd")
+const PickupModel := preload("res://scripts/pickups/pickup.gd")
+const RoomManager := preload("res://scripts/rooms/room_manager.gd")
+const HudPresenter := preload("res://scripts/ui/hud_presenter.gd")
+const UpgradeCatalog := preload("res://scripts/ui/upgrade_catalog.gd")
+const TouchControls := preload("res://scripts/ui/touch_controls.gd")
+const CollisionUtils := preload("res://scripts/utils/collision_utils.gd")
 
 enum Mode { PLAYING, UPGRADE, DEAD, WON }
 
@@ -28,19 +28,7 @@ var damage_flash := 0.0
 var upgrade_choices: Array = []
 var messages: Array[String] = []
 
-var player := {
-	"pos": Vector2.ZERO,
-	"hp": 80,
-	"max_hp": 80,
-	"power": 13,
-	"level": 1,
-	"xp": 0,
-	"speed": 250.0,
-	"fire_rate": 0.58,
-	"arrows": 1,
-	"pierce": 0,
-	"ricochet": false
-}
+var player: Dictionary = PlayerModel.create()
 
 var enemies: Array = []
 var arrows: Array = []
@@ -111,7 +99,7 @@ func _handle_touch_input(event: InputEvent) -> bool:
 					if _upgrade_card_rect(i).has_point(touch.position):
 						_take_upgrade(i)
 						return true
-			if touch.position.distance_to(JOYSTICK_CENTER) <= JOYSTICK_RADIUS * 1.65:
+			if touch.position.distance_to(Constants.JOYSTICK_CENTER) <= Constants.JOYSTICK_RADIUS * 1.65:
 				joystick_touch_index = touch.index
 				touch_axis = _joystick_axis(touch.position)
 				return true
@@ -156,16 +144,7 @@ func _new_run() -> void:
 	messages.clear()
 	touch_axis = Vector2.ZERO
 	joystick_touch_index = -1
-	player.pos = _player_start_position()
-	player.hp = player.max_hp
-	player.power = 13
-	player.level = 1
-	player.xp = 0
-	player.speed = 250.0
-	player.fire_rate = 0.58
-	player.arrows = 1
-	player.pierce = 0
-	player.ricochet = false
+	PlayerModel.reset(player, _player_start_position())
 	_spawn_room()
 	_log("Clear the room. Stop moving to auto-fire.")
 	_refresh()
@@ -182,64 +161,30 @@ func _spawn_room() -> void:
 
 	var count := 4 + room_index * 2
 	for i in count:
-		var kind := "crawler"
-		if room_index >= 2 and rng.randf() < 0.32:
-			kind = "spitter"
-		if room_index >= 4 and rng.randf() < 0.22:
-			kind = "brute"
+		var kind := EnemyModel.choose_kind(room_index, rng)
 		_spawn_enemy(kind)
 
 
 # 用途：依照房間編號產生不同配置的場地障礙物。
 func _generate_obstacles() -> void:
-	obstacles.clear()
-	if room_index % 3 == 1:
-		obstacles.append(Rect2(ARENA.position + Vector2(106, 260), Vector2(74, 150)))
-		obstacles.append(Rect2(ARENA.position + Vector2(300, 188), Vector2(66, 220)))
-	elif room_index % 3 == 2:
-		obstacles.append(Rect2(ARENA.position + Vector2(82, 160), Vector2(122, 52)))
-		obstacles.append(Rect2(ARENA.position + Vector2(258, 430), Vector2(142, 52)))
-		obstacles.append(Rect2(ARENA.position + Vector2(206, 284), Vector2(70, 96)))
-	else:
-		obstacles.append(Rect2(ARENA.position + Vector2(78, 314), Vector2(136, 48)))
-		obstacles.append(Rect2(ARENA.position + Vector2(258, 314), Vector2(136, 48)))
+	obstacles = RoomManager.obstacle_layout(room_index, Constants.ARENA)
 
 
 # 用途：依敵人類型建立敵人的生命、速度、傷害與初始位置。
 func _spawn_enemy(kind: String) -> void:
-	var hp := 24 + room_index * 6
-	var speed := 92.0 + room_index * 5.0
-	var touch := 9 + room_index
-	if kind == "spitter":
-		hp = 19 + room_index * 5
-		speed = 74.0
-	elif kind == "brute":
-		hp = 46 + room_index * 10
-		speed = 64.0
-		touch = 15 + room_index
-
-	enemies.append({
-		"kind": kind,
-		"pos": _random_spawn_position(),
-		"hp": hp,
-		"max_hp": hp,
-		"speed": speed,
-		"touch": touch,
-		"hit_cd": 0.0,
-		"shoot_cd": rng.randf_range(0.4, 1.4)
-	})
+	enemies.append(EnemyModel.create(kind, room_index, _random_spawn_position(), rng))
 
 
 # 用途：尋找遠離玩家且不在障礙物內的敵人出生位置。
 func _random_spawn_position() -> Vector2:
 	for attempt in 120:
 		var pos := Vector2(
-			rng.randf_range(ARENA.position.x + 48, ARENA.end.x - 48),
-			rng.randf_range(ARENA.position.y + 44, ARENA.end.y - 130)
+			rng.randf_range(Constants.ARENA.position.x + 48, Constants.ARENA.end.x - 48),
+			rng.randf_range(Constants.ARENA.position.y + 44, Constants.ARENA.end.y - 130)
 		)
-		if pos.distance_to(player.pos) > 260.0 and not _point_in_obstacle(pos, ENEMY_RADIUS):
+		if pos.distance_to(player.pos) > 260.0 and not _point_in_obstacle(pos, Constants.ENEMY_RADIUS):
 			return pos
-	return ARENA.get_center() + Vector2(rng.randf_range(-170, 170), rng.randf_range(-250, -80))
+	return Constants.ARENA.get_center() + Vector2(rng.randf_range(-170, 170), rng.randf_range(-250, -80))
 
 
 # 用途：更新玩家移動、停止時自動射擊，以及進入清場傳送門的判定。
@@ -249,8 +194,8 @@ func _update_player(delta: float) -> void:
 		direction = touch_axis
 	if direction.length() > 0.05:
 		player.pos += direction.normalized() * float(player.speed) * delta
-		player.pos = _clamp_to_arena(player.pos, PLAYER_RADIUS)
-		player.pos = _push_out_of_obstacles(player.pos, PLAYER_RADIUS)
+		player.pos = _clamp_to_arena(player.pos, Constants.PLAYER_RADIUS)
+		player.pos = _push_out_of_obstacles(player.pos, Constants.PLAYER_RADIUS)
 		fire_timer = min(fire_timer, float(player.fire_rate) * 0.45)
 	elif enemies.size() > 0:
 		fire_timer -= delta
@@ -258,7 +203,7 @@ func _update_player(delta: float) -> void:
 			_fire_at_nearest_enemy()
 			fire_timer = float(player.fire_rate)
 
-	if room_clear and player.pos.distance_to(_gate_position()) <= GATE_RADIUS:
+	if room_clear and player.pos.distance_to(_gate_position()) <= Constants.GATE_RADIUS:
 		_advance_room()
 
 
@@ -276,14 +221,7 @@ func _fire_at_nearest_enemy() -> void:
 		if count > 1:
 			offset = (float(i) - float(count - 1) * 0.5) * spread
 		var dir := base_dir.rotated(offset)
-		arrows.append({
-			"pos": player.pos + dir * 24.0,
-			"vel": dir * 585.0,
-			"damage": player.power,
-			"life": 1.35,
-			"pierce_left": player.pierce,
-			"ricocheted": false
-		})
+		arrows.append(ArrowModel.create(player.pos, dir, int(player.power), int(player.pierce)))
 
 
 # 用途：更新玩家箭矢飛行、碰撞、穿透、彈射與命中傷害。
@@ -293,11 +231,11 @@ func _update_arrows(delta: float) -> void:
 		arrow.pos += arrow.vel * delta
 		arrow.life -= delta
 
-		if not ARENA.has_point(arrow.pos) or _point_in_obstacle(arrow.pos, ARROW_RADIUS) or arrow.life <= 0.0:
+		if not Constants.ARENA.has_point(arrow.pos) or _point_in_obstacle(arrow.pos, Constants.ARROW_RADIUS) or arrow.life <= 0.0:
 			arrows.remove_at(i)
 			continue
 
-		var hit: int = _enemy_hit_by(arrow.pos, ARROW_RADIUS)
+		var hit: int = _enemy_hit_by(arrow.pos, Constants.ARROW_RADIUS)
 		if hit == -1:
 			continue
 
@@ -334,22 +272,17 @@ func _update_enemies(delta: float) -> void:
 		else:
 			enemy.pos += to_player.normalized() * float(enemy.speed) * delta
 
-		enemy.pos = _clamp_to_arena(enemy.pos, ENEMY_RADIUS)
-		enemy.pos = _push_out_of_obstacles(enemy.pos, ENEMY_RADIUS)
+		enemy.pos = _clamp_to_arena(enemy.pos, Constants.ENEMY_RADIUS)
+		enemy.pos = _push_out_of_obstacles(enemy.pos, Constants.ENEMY_RADIUS)
 
-		if distance <= PLAYER_RADIUS + ENEMY_RADIUS + 2.0 and enemy.hit_cd <= 0.0:
+		if distance <= Constants.PLAYER_RADIUS + Constants.ENEMY_RADIUS + 2.0 and enemy.hit_cd <= 0.0:
 			_damage_player(int(enemy.touch))
 			enemy.hit_cd = 0.75
 
 
 # 用途：從指定位置朝指定方向產生敵人的遠程子彈。
 func _fire_enemy_shot(origin: Vector2, direction: Vector2) -> void:
-	enemy_shots.append({
-		"pos": origin + direction * 22.0,
-		"vel": direction * 225.0,
-		"damage": 8 + room_index,
-		"life": 3.0
-	})
+	enemy_shots.append(EnemyShotModel.create(origin, direction, room_index))
 
 
 # 用途：更新敵人子彈飛行、撞牆消失與命中玩家傷害。
@@ -359,11 +292,11 @@ func _update_enemy_shots(delta: float) -> void:
 		shot.pos += shot.vel * delta
 		shot.life -= delta
 
-		if not ARENA.has_point(shot.pos) or _point_in_obstacle(shot.pos, 7.0) or shot.life <= 0.0:
+		if not Constants.ARENA.has_point(shot.pos) or _point_in_obstacle(shot.pos, 7.0) or shot.life <= 0.0:
 			enemy_shots.remove_at(i)
 			continue
 
-		if shot.pos.distance_to(player.pos) <= PLAYER_RADIUS + 7.0:
+		if shot.pos.distance_to(player.pos) <= Constants.PLAYER_RADIUS + 7.0:
 			_damage_player(int(shot.damage))
 			enemy_shots.remove_at(i)
 
@@ -378,9 +311,9 @@ func _damage_enemy(index: int, damage: int, direction: Vector2) -> void:
 		var xp_value: int = 4 + room_index
 		var drop_pos: Vector2 = enemy.pos
 		enemies.remove_at(index)
-		pickups.append({"pos": drop_pos, "kind": "xp", "value": xp_value})
+		pickups.append(PickupModel.xp(drop_pos, xp_value))
 		if rng.randf() < 0.16:
-			pickups.append({"pos": drop_pos + Vector2(rng.randf_range(-18, 18), rng.randf_range(-18, 18)), "kind": "heart", "value": 12})
+			pickups.append(PickupModel.heart(drop_pos + Vector2(rng.randf_range(-18, 18), rng.randf_range(-18, 18)), 12))
 
 
 # 用途：扣除玩家生命、顯示受傷效果，並在生命歸零時結束遊戲。
@@ -400,7 +333,7 @@ func _update_pickups() -> void:
 		if pickup.pos.distance_to(player.pos) > 135.0:
 			continue
 		pickup.pos = pickup.pos.move_toward(player.pos, 7.0)
-		if pickup.pos.distance_to(player.pos) <= PLAYER_RADIUS + PICKUP_RADIUS:
+		if pickup.pos.distance_to(player.pos) <= Constants.PLAYER_RADIUS + Constants.PICKUP_RADIUS:
 			if pickup.kind == "xp":
 				_gain_xp(int(pickup.value))
 			else:
@@ -422,14 +355,7 @@ func _gain_xp(amount: int) -> void:
 # 用途：隨機產生三個升級選項並暫停戰鬥等待玩家選擇。
 func _roll_upgrades() -> void:
 	mode = Mode.UPGRADE
-	upgrade_choices = [
-		{"name": "Power Shot", "desc": "+4 damage", "stat": "power"},
-		{"name": "Quick Draw", "desc": "faster auto-fire", "stat": "speed"},
-		{"name": "Vitality", "desc": "+18 max HP", "stat": "hp"},
-		{"name": "Twin Arrow", "desc": "+1 arrow", "stat": "arrows"},
-		{"name": "Piercing", "desc": "arrows pass through 1 enemy", "stat": "pierce"},
-		{"name": "Ricochet", "desc": "first hit bounces", "stat": "ricochet"}
-	]
+	upgrade_choices = UpgradeCatalog.choices()
 	upgrade_choices.shuffle()
 	upgrade_choices = upgrade_choices.slice(0, 3)
 	_log("Level up. Choose an upgrade with 1, 2, or 3.")
@@ -441,20 +367,7 @@ func _take_upgrade(index: int) -> void:
 		return
 
 	var upgrade: Dictionary = upgrade_choices[index]
-	match upgrade.stat:
-		"power":
-			player.power += 4
-		"speed":
-			player.fire_rate = max(0.25, float(player.fire_rate) - 0.08)
-		"hp":
-			player.max_hp += 18
-			player.hp = min(int(player.max_hp), int(player.hp) + 18)
-		"arrows":
-			player.arrows = min(4, int(player.arrows) + 1)
-		"pierce":
-			player.pierce = min(3, int(player.pierce) + 1)
-		"ricochet":
-			player.ricochet = true
+	PlayerModel.apply_upgrade(player, upgrade.stat)
 	_log("Upgrade: %s." % upgrade.name)
 	upgrade_choices.clear()
 	mode = Mode.PLAYING
@@ -472,7 +385,7 @@ func _check_room_clear() -> void:
 
 # 用途：玩家進入傳送門後推進到下一房，或在最後房間通關。
 func _advance_room() -> void:
-	if room_index >= MAX_ROOMS:
+	if room_index >= Constants.MAX_ROOMS:
 		mode = Mode.WON
 		_log("Chapter cleared. Press R for another run.")
 		return
@@ -480,7 +393,7 @@ func _advance_room() -> void:
 	player.hp = min(int(player.max_hp), int(player.hp) + 10)
 	player.pos = _player_start_position()
 	_spawn_room()
-	_log("Room %d/%d. Keep moving between shots." % [room_index, MAX_ROOMS])
+	_log("Room %d/%d. Keep moving between shots." % [room_index, Constants.MAX_ROOMS])
 
 
 # 用途：取得距離玩家最近的敵人索引。
@@ -505,66 +418,39 @@ func _nearest_enemy_to(pos: Vector2, ignored: int) -> int:
 # 用途：檢查指定圓形範圍是否命中敵人，回傳命中的敵人索引。
 func _enemy_hit_by(pos: Vector2, radius: float) -> int:
 	for i in enemies.size():
-		if pos.distance_to(enemies[i].pos) <= radius + ENEMY_RADIUS:
+		if pos.distance_to(enemies[i].pos) <= radius + Constants.ENEMY_RADIUS:
 			return i
 	return -1
 
 
 # 用途：將指定位置限制在房間邊界內，並保留半徑距離。
 func _clamp_to_arena(pos: Vector2, radius: float) -> Vector2:
-	return Vector2(
-		clampf(pos.x, ARENA.position.x + radius, ARENA.end.x - radius),
-		clampf(pos.y, ARENA.position.y + radius, ARENA.end.y - radius)
-	)
+	return CollisionUtils.clamp_to_rect(pos, Constants.ARENA, radius)
 
 
 # 用途：當圓形物件進入障礙物時，將它推回最近的可通行位置。
 func _push_out_of_obstacles(pos: Vector2, radius: float) -> Vector2:
-	var pushed: Vector2 = pos
-	for obstacle in obstacles:
-		var grown: Rect2 = obstacle.grow(radius)
-		if not grown.has_point(pushed):
-			continue
-		var left: float = abs(pushed.x - grown.position.x)
-		var right: float = abs(grown.end.x - pushed.x)
-		var top: float = abs(pushed.y - grown.position.y)
-		var bottom: float = abs(grown.end.y - pushed.y)
-		var smallest: float = min(left, right, top, bottom)
-		if smallest == left:
-			pushed.x = grown.position.x
-		elif smallest == right:
-			pushed.x = grown.end.x
-		elif smallest == top:
-			pushed.y = grown.position.y
-		else:
-			pushed.y = grown.end.y
-	return _clamp_to_arena(pushed, radius)
+	return CollisionUtils.push_out_of_rects(pos, radius, obstacles, Constants.ARENA)
 
 
 # 用途：判斷指定位置與半徑是否和任何障礙物重疊。
 func _point_in_obstacle(pos: Vector2, radius: float) -> bool:
-	for obstacle in obstacles:
-		if obstacle.grow(radius).has_point(pos):
-			return true
-	return false
+	return CollisionUtils.circle_overlaps_any_rect(pos, radius, obstacles)
 
 
 # 用途：取得清場後傳送門應該出現的位置。
 func _gate_position() -> Vector2:
-	return Vector2(ARENA.get_center().x, ARENA.position.y + 26)
+	return RoomManager.gate_position(Constants.ARENA)
 
 
 # 用途：取得每個房間開始時玩家的直式版起點位置。
 func _player_start_position() -> Vector2:
-	return ARENA.get_center() + Vector2(0, ARENA.size.y * 0.34)
+	return RoomManager.player_start_position(Constants.ARENA)
 
 
 # 用途：將觸控位置轉換成虛擬搖桿的方向向量。
 func _joystick_axis(touch_position: Vector2) -> Vector2:
-	var offset := touch_position - JOYSTICK_CENTER
-	if offset.length() <= 4.0:
-		return Vector2.ZERO
-	return offset.limit_length(JOYSTICK_RADIUS) / JOYSTICK_RADIUS
+	return TouchControls.joystick_axis(touch_position, Constants.JOYSTICK_CENTER, Constants.JOYSTICK_RADIUS)
 
 
 # 用途：取得直式升級選單中指定卡片的位置與大小。
@@ -589,18 +475,8 @@ func _update_floating_texts(delta: float) -> void:
 # 用途：更新 HUD、訊息紀錄文字，並要求畫面重新繪製。
 func _refresh() -> void:
 	var xp_needed: int = _xp_needed()
-	hud.text = "Room %d/%d   HP %d/%d   Lv.%d\nXP %d/%d   DMG %d   Arrows %d" % [
-		room_index,
-		MAX_ROOMS,
-		player.hp,
-		player.max_hp,
-		player.level,
-		player.xp,
-		xp_needed,
-		player.power,
-		player.arrows
-	]
-	log_label.text = "\n".join(messages.slice(max(0, messages.size() - 3), messages.size()))
+	hud.text = HudPresenter.hud_text(room_index, Constants.MAX_ROOMS, player, xp_needed)
+	log_label.text = HudPresenter.recent_messages(messages, 3)
 	queue_redraw()
 
 
@@ -613,9 +489,9 @@ func _log(text: String) -> void:
 
 # 用途：繪製整體背景與淡色棋盤格紋理。
 func _draw_background() -> void:
-	draw_rect(Rect2(Vector2.ZERO, VIEW_SIZE), Color(0.06, 0.09, 0.12))
-	for y in range(0, int(VIEW_SIZE.y), 52):
-		for x in range(0, int(VIEW_SIZE.x), 52):
+	draw_rect(Rect2(Vector2.ZERO, Constants.VIEW_SIZE), Color(0.06, 0.09, 0.12))
+	for y in range(0, int(Constants.VIEW_SIZE.y), 52):
+		for x in range(0, int(Constants.VIEW_SIZE.x), 52):
 			var cell_x: int = floori(float(x) / 52.0)
 			var cell_y: int = floori(float(y) / 52.0)
 			var tint: float = 0.015 if (cell_x + cell_y) % 2 == 0 else 0.0
@@ -624,15 +500,15 @@ func _draw_background() -> void:
 
 # 用途：繪製戰鬥房間、地板格紋、邊框與障礙物。
 func _draw_arena() -> void:
-	draw_rect(ARENA.grow(20), Color(0.11, 0.31, 0.27))
-	draw_rect(ARENA, Color(0.11, 0.72, 0.65))
-	for y in range(int(ARENA.position.y), int(ARENA.end.y), 64):
-		for x in range(int(ARENA.position.x), int(ARENA.end.x), 64):
+	draw_rect(Constants.ARENA.grow(20), Color(0.11, 0.31, 0.27))
+	draw_rect(Constants.ARENA, Color(0.11, 0.72, 0.65))
+	for y in range(int(Constants.ARENA.position.y), int(Constants.ARENA.end.y), 64):
+		for x in range(int(Constants.ARENA.position.x), int(Constants.ARENA.end.x), 64):
 			var cell_x: int = floori(float(x) / 64.0)
 			var cell_y: int = floori(float(y) / 64.0)
 			var tint: float = 0.025 if (cell_x + cell_y) % 2 == 0 else 0.0
 			draw_rect(Rect2(Vector2(x, y), Vector2(64, 64)), Color(0.12 + tint, 0.76 + tint, 0.69 + tint))
-	draw_rect(ARENA, Color(0.72, 0.95, 0.88), false, 4.0)
+	draw_rect(Constants.ARENA, Color(0.72, 0.95, 0.88), false, 4.0)
 	for obstacle in obstacles:
 		draw_rect(obstacle, Color(0.82, 0.85, 0.82))
 		draw_rect(obstacle.grow(-6), Color(0.18, 0.22, 0.22))
@@ -643,7 +519,7 @@ func _draw_gate() -> void:
 	if not room_clear:
 		return
 	var gate := _gate_position()
-	draw_circle(gate, GATE_RADIUS + sin(elapsed * 5.0) * 4.0, Color(0.13, 0.92, 1.0, 0.22))
+	draw_circle(gate, Constants.GATE_RADIUS + sin(elapsed * 5.0) * 4.0, Color(0.13, 0.92, 1.0, 0.22))
 	draw_circle(gate, 24.0, Color(0.08, 0.42, 1.0))
 	draw_arc(gate, 34.0, 0.0, TAU, 48, Color(0.62, 1.0, 1.0), 4.0)
 
@@ -651,9 +527,9 @@ func _draw_gate() -> void:
 # 用途：繪製 XP 與回血拾取物，以及它們的外圈光暈。
 func _draw_pickups() -> void:
 	for pickup in pickups:
-		var color := Color(0.32, 0.85, 1.0) if pickup.kind == "xp" else Color(0.15, 1.0, 0.38)
-		draw_circle(pickup.pos, PICKUP_RADIUS, color)
-		draw_circle(pickup.pos, PICKUP_RADIUS + 4.0, Color(color.r, color.g, color.b, 0.2))
+		var color: Color = PickupModel.color_for(pickup.kind)
+		draw_circle(pickup.pos, Constants.PICKUP_RADIUS, color)
+		draw_circle(pickup.pos, Constants.PICKUP_RADIUS + 4.0, Color(color.r, color.g, color.b, 0.2))
 
 
 # 用途：繪製玩家射出的箭矢與箭頭亮點。
@@ -674,13 +550,9 @@ func _draw_enemy_shots() -> void:
 # 用途：繪製敵人外觀、眼睛與生命條。
 func _draw_enemies() -> void:
 	for enemy in enemies:
-		var color := Color(0.82, 0.18, 0.16)
-		if enemy.kind == "spitter":
-			color = Color(0.58, 0.18, 0.82)
-		elif enemy.kind == "brute":
-			color = Color(0.16, 0.46, 0.24)
-		draw_circle(enemy.pos, ENEMY_RADIUS + 5.0, Color(color.r, color.g, color.b, 0.22))
-		draw_circle(enemy.pos, ENEMY_RADIUS, color)
+		var color: Color = EnemyModel.color_for(enemy.kind)
+		draw_circle(enemy.pos, Constants.ENEMY_RADIUS + 5.0, Color(color.r, color.g, color.b, 0.22))
+		draw_circle(enemy.pos, Constants.ENEMY_RADIUS, color)
 		draw_circle(enemy.pos + Vector2(-6, -5), 3.0, Color(0.05, 0.05, 0.05))
 		draw_circle(enemy.pos + Vector2(6, -5), 3.0, Color(0.05, 0.05, 0.05))
 		var bar := Rect2(enemy.pos + Vector2(-24, -34), Vector2(48, 6))
@@ -690,23 +562,23 @@ func _draw_enemies() -> void:
 
 # 用途：繪製玩家角色、武器線條與受傷閃爍效果。
 func _draw_player() -> void:
-	draw_circle(player.pos, PLAYER_RADIUS + 7.0, Color(0.2, 0.8, 1.0, 0.22))
-	draw_circle(player.pos, PLAYER_RADIUS, Color(0.18, 0.42, 0.92))
+	draw_circle(player.pos, Constants.PLAYER_RADIUS + 7.0, Color(0.2, 0.8, 1.0, 0.22))
+	draw_circle(player.pos, Constants.PLAYER_RADIUS, Color(0.18, 0.42, 0.92))
 	draw_circle(player.pos + Vector2(6, -13), 8.0, Color(0.96, 0.82, 0.58))
 	draw_line(player.pos + Vector2(-11, 0), player.pos + Vector2(12, -3), Color(0.92, 0.82, 0.28), 4.0)
 	if damage_flash > 0.0:
-		draw_circle(player.pos, PLAYER_RADIUS + 13.0, Color(1.0, 0.1, 0.06, 0.28))
+		draw_circle(player.pos, Constants.PLAYER_RADIUS + 13.0, Color(1.0, 0.1, 0.06, 0.28))
 
 
 # 用途：繪製手機直式版左下角虛擬搖桿。
 func _draw_touch_controls() -> void:
 	if mode != Mode.PLAYING:
 		return
-	var knob_position := JOYSTICK_CENTER + touch_axis.limit_length(1.0) * JOYSTICK_RADIUS
-	draw_circle(JOYSTICK_CENTER, JOYSTICK_RADIUS, Color(0.85, 0.9, 0.88, 0.18))
-	draw_arc(JOYSTICK_CENTER, JOYSTICK_RADIUS, 0.0, TAU, 48, Color(0.8, 0.95, 0.92, 0.38), 3.0)
-	draw_circle(knob_position, JOYSTICK_KNOB_RADIUS, Color(0.1, 0.48, 0.95, 0.72))
-	draw_circle(knob_position, JOYSTICK_KNOB_RADIUS + 7.0, Color(0.15, 0.75, 1.0, 0.18))
+	var knob_position := Constants.JOYSTICK_CENTER + touch_axis.limit_length(1.0) * Constants.JOYSTICK_RADIUS
+	draw_circle(Constants.JOYSTICK_CENTER, Constants.JOYSTICK_RADIUS, Color(0.85, 0.9, 0.88, 0.18))
+	draw_arc(Constants.JOYSTICK_CENTER, Constants.JOYSTICK_RADIUS, 0.0, TAU, 48, Color(0.8, 0.95, 0.92, 0.38), 3.0)
+	draw_circle(knob_position, Constants.JOYSTICK_KNOB_RADIUS, Color(0.1, 0.48, 0.95, 0.72))
+	draw_circle(knob_position, Constants.JOYSTICK_KNOB_RADIUS + 7.0, Color(0.15, 0.75, 1.0, 0.18))
 
 
 # 用途：繪製傷害、回血等浮動數字文字。
@@ -718,7 +590,7 @@ func _draw_floating_texts() -> void:
 # 用途：繪製升級選擇、死亡與通關時的覆蓋介面。
 func _draw_overlay() -> void:
 	if mode == Mode.UPGRADE:
-		draw_rect(Rect2(Vector2.ZERO, VIEW_SIZE), Color(0.02, 0.03, 0.04, 0.72))
+		draw_rect(Rect2(Vector2.ZERO, Constants.VIEW_SIZE), Color(0.02, 0.03, 0.04, 0.72))
 		draw_string(ThemeDB.fallback_font, Vector2(124, 232), "Choose an ability", HORIZONTAL_ALIGNMENT_LEFT, -1, 31, Color(0.95, 0.96, 0.88))
 		for i in upgrade_choices.size():
 			var card := _upgrade_card_rect(i)
@@ -728,7 +600,7 @@ func _draw_overlay() -> void:
 			draw_string(ThemeDB.fallback_font, card.position + Vector2(72, 42), upgrade_choices[i].name, HORIZONTAL_ALIGNMENT_LEFT, -1, 22, Color(0.95, 0.96, 0.88))
 			draw_string(ThemeDB.fallback_font, card.position + Vector2(72, 78), upgrade_choices[i].desc, HORIZONTAL_ALIGNMENT_LEFT, -1, 16, Color(0.76, 0.82, 0.78))
 	elif mode == Mode.DEAD or mode == Mode.WON:
-		draw_rect(Rect2(Vector2.ZERO, VIEW_SIZE), Color(0.02, 0.03, 0.04, 0.74))
+		draw_rect(Rect2(Vector2.ZERO, Constants.VIEW_SIZE), Color(0.02, 0.03, 0.04, 0.74))
 		var title := "Chapter cleared" if mode == Mode.WON else "Run failed"
 		draw_string(ThemeDB.fallback_font, Vector2(144, 392), title, HORIZONTAL_ALIGNMENT_LEFT, -1, 36, Color(0.95, 0.96, 0.88))
 		draw_string(ThemeDB.fallback_font, Vector2(130, 442), "Press R to start a new run.", HORIZONTAL_ALIGNMENT_LEFT, -1, 19, Color(0.76, 0.82, 0.78))

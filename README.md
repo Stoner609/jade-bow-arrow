@@ -18,3 +18,13 @@ A small portrait mobile Archero-like action roguelite prototype built in Godot 4
 ```sh
 /Applications/Godot.app/Contents/MacOS/Godot --headless --path . --script res://tests/smoke_test.gd
 ```
+
+## Code Structure
+
+- `scripts/core/`: game controller, shared constants, and run-level state.
+- `scripts/actors/`: player and enemy data/behavior helpers.
+- `scripts/projectiles/`: player arrows and enemy shots.
+- `scripts/pickups/`: XP and healing pickup helpers.
+- `scripts/rooms/`: room layout, gate, and spawn positioning helpers.
+- `scripts/ui/`: HUD, upgrade choices, and touch-control helpers.
+- `scripts/utils/`: shared collision helpers.
