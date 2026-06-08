@@ -1,13 +1,16 @@
 extends Node2D
 
-const VIEW_SIZE := Vector2(1000, 800)
-const ARENA := Rect2(Vector2(86, 112), Vector2(828, 568))
+const VIEW_SIZE := Vector2(540, 960)
+const ARENA := Rect2(Vector2(34, 118), Vector2(472, 686))
 const MAX_ROOMS := 6
 const PLAYER_RADIUS := 18.0
 const ENEMY_RADIUS := 19.0
 const ARROW_RADIUS := 6.0
 const PICKUP_RADIUS := 12.0
 const GATE_RADIUS := 38.0
+const JOYSTICK_CENTER := Vector2(104, 846)
+const JOYSTICK_RADIUS := 58.0
+const JOYSTICK_KNOB_RADIUS := 24.0
 
 enum Mode { PLAYING, UPGRADE, DEAD, WON }
 
@@ -45,12 +48,14 @@ var enemy_shots: Array = []
 var pickups: Array = []
 var floating_texts: Array = []
 var obstacles: Array[Rect2] = []
+var touch_axis := Vector2.ZERO
+var joystick_touch_index := -1
 
 
 # 用途：初始化隨機數、說明文字，並開始一局新遊戲。
 func _ready() -> void:
 	rng.randomize()
-	help_label.text = "WASD / Arrows: Move\nStop to auto-fire    1-3: Upgrade\nR: Restart"
+	help_label.text = "Drag joystick: Move\nStop to auto-fire\nR: Restart"
 	_new_run()
 
 
@@ -76,6 +81,9 @@ func _process(delta: float) -> void:
 
 # 用途：處理重新開始與升級選項等不由移動軸直接處理的按鍵輸入。
 func _unhandled_input(event: InputEvent) -> void:
+	if _handle_touch_input(event):
+		return
+
 	if event.is_echo() or not event.is_pressed():
 		return
 
@@ -93,6 +101,30 @@ func _unhandled_input(event: InputEvent) -> void:
 				_take_upgrade(2)
 
 
+# 用途：處理手機觸控輸入，包括虛擬搖桿拖曳與升級卡片點選。
+func _handle_touch_input(event: InputEvent) -> bool:
+	if event is InputEventScreenTouch:
+		var touch := event as InputEventScreenTouch
+		if touch.pressed:
+			if mode == Mode.UPGRADE:
+				for i in upgrade_choices.size():
+					if _upgrade_card_rect(i).has_point(touch.position):
+						_take_upgrade(i)
+						return true
+			if touch.position.distance_to(JOYSTICK_CENTER) <= JOYSTICK_RADIUS * 1.65:
+				joystick_touch_index = touch.index
+				touch_axis = _joystick_axis(touch.position)
+				return true
+		elif touch.index == joystick_touch_index:
+			joystick_touch_index = -1
+			touch_axis = Vector2.ZERO
+			return true
+	elif event is InputEventScreenDrag and event.index == joystick_touch_index:
+		touch_axis = _joystick_axis(event.position)
+		return true
+	return false
+
+
 # 用途：依序繪製背景、房間、物件、角色、敵人、特效與覆蓋介面。
 func _draw() -> void:
 	_draw_background()
@@ -104,6 +136,7 @@ func _draw() -> void:
 	_draw_enemies()
 	_draw_player()
 	_draw_floating_texts()
+	_draw_touch_controls()
 	_draw_overlay()
 
 
@@ -121,7 +154,9 @@ func _new_run() -> void:
 	pickups.clear()
 	floating_texts.clear()
 	messages.clear()
-	player.pos = ARENA.get_center() + Vector2(0, 170)
+	touch_axis = Vector2.ZERO
+	joystick_touch_index = -1
+	player.pos = _player_start_position()
 	player.hp = player.max_hp
 	player.power = 13
 	player.level = 1
@@ -159,15 +194,15 @@ func _spawn_room() -> void:
 func _generate_obstacles() -> void:
 	obstacles.clear()
 	if room_index % 3 == 1:
-		obstacles.append(Rect2(ARENA.position + Vector2(244, 216), Vector2(88, 142)))
-		obstacles.append(Rect2(ARENA.position + Vector2(500, 154), Vector2(72, 232)))
+		obstacles.append(Rect2(ARENA.position + Vector2(106, 260), Vector2(74, 150)))
+		obstacles.append(Rect2(ARENA.position + Vector2(300, 188), Vector2(66, 220)))
 	elif room_index % 3 == 2:
-		obstacles.append(Rect2(ARENA.position + Vector2(190, 150), Vector2(130, 52)))
-		obstacles.append(Rect2(ARENA.position + Vector2(510, 360), Vector2(150, 52)))
-		obstacles.append(Rect2(ARENA.position + Vector2(382, 238), Vector2(70, 90)))
+		obstacles.append(Rect2(ARENA.position + Vector2(82, 160), Vector2(122, 52)))
+		obstacles.append(Rect2(ARENA.position + Vector2(258, 430), Vector2(142, 52)))
+		obstacles.append(Rect2(ARENA.position + Vector2(206, 284), Vector2(70, 96)))
 	else:
-		obstacles.append(Rect2(ARENA.position + Vector2(180, 270), Vector2(185, 48)))
-		obstacles.append(Rect2(ARENA.position + Vector2(468, 270), Vector2(185, 48)))
+		obstacles.append(Rect2(ARENA.position + Vector2(78, 314), Vector2(136, 48)))
+		obstacles.append(Rect2(ARENA.position + Vector2(258, 314), Vector2(136, 48)))
 
 
 # 用途：依敵人類型建立敵人的生命、速度、傷害與初始位置。
@@ -200,16 +235,18 @@ func _random_spawn_position() -> Vector2:
 	for attempt in 120:
 		var pos := Vector2(
 			rng.randf_range(ARENA.position.x + 48, ARENA.end.x - 48),
-			rng.randf_range(ARENA.position.y + 42, ARENA.end.y - 90)
+			rng.randf_range(ARENA.position.y + 44, ARENA.end.y - 130)
 		)
-		if pos.distance_to(player.pos) > 230.0 and not _point_in_obstacle(pos, ENEMY_RADIUS):
+		if pos.distance_to(player.pos) > 260.0 and not _point_in_obstacle(pos, ENEMY_RADIUS):
 			return pos
-	return ARENA.get_center() + Vector2(rng.randf_range(-250, 250), rng.randf_range(-150, 40))
+	return ARENA.get_center() + Vector2(rng.randf_range(-170, 170), rng.randf_range(-250, -80))
 
 
 # 用途：更新玩家移動、停止時自動射擊，以及進入清場傳送門的判定。
 func _update_player(delta: float) -> void:
 	var direction := Input.get_vector("move_left", "move_right", "move_up", "move_down")
+	if touch_axis.length() > direction.length():
+		direction = touch_axis
 	if direction.length() > 0.05:
 		player.pos += direction.normalized() * float(player.speed) * delta
 		player.pos = _clamp_to_arena(player.pos, PLAYER_RADIUS)
@@ -441,7 +478,7 @@ func _advance_room() -> void:
 		return
 	room_index += 1
 	player.hp = min(int(player.max_hp), int(player.hp) + 10)
-	player.pos = ARENA.get_center() + Vector2(0, 170)
+	player.pos = _player_start_position()
 	_spawn_room()
 	_log("Room %d/%d. Keep moving between shots." % [room_index, MAX_ROOMS])
 
@@ -514,7 +551,25 @@ func _point_in_obstacle(pos: Vector2, radius: float) -> bool:
 
 # 用途：取得清場後傳送門應該出現的位置。
 func _gate_position() -> Vector2:
-	return Vector2(ARENA.get_center().x, ARENA.position.y + 20)
+	return Vector2(ARENA.get_center().x, ARENA.position.y + 26)
+
+
+# 用途：取得每個房間開始時玩家的直式版起點位置。
+func _player_start_position() -> Vector2:
+	return ARENA.get_center() + Vector2(0, ARENA.size.y * 0.34)
+
+
+# 用途：將觸控位置轉換成虛擬搖桿的方向向量。
+func _joystick_axis(touch_position: Vector2) -> Vector2:
+	var offset := touch_position - JOYSTICK_CENTER
+	if offset.length() <= 4.0:
+		return Vector2.ZERO
+	return offset.limit_length(JOYSTICK_RADIUS) / JOYSTICK_RADIUS
+
+
+# 用途：取得直式升級選單中指定卡片的位置與大小。
+func _upgrade_card_rect(index: int) -> Rect2:
+	return Rect2(Vector2(54, 292 + index * 136), Vector2(432, 112))
 
 
 # 用途：計算玩家目前等級升到下一級所需的經驗值。
@@ -534,7 +589,7 @@ func _update_floating_texts(delta: float) -> void:
 # 用途：更新 HUD、訊息紀錄文字，並要求畫面重新繪製。
 func _refresh() -> void:
 	var xp_needed: int = _xp_needed()
-	hud.text = "Room %d/%d   HP %d/%d   Lv.%d   XP %d/%d   DMG %d   Arrows %d" % [
+	hud.text = "Room %d/%d   HP %d/%d   Lv.%d\nXP %d/%d   DMG %d   Arrows %d" % [
 		room_index,
 		MAX_ROOMS,
 		player.hp,
@@ -643,6 +698,17 @@ func _draw_player() -> void:
 		draw_circle(player.pos, PLAYER_RADIUS + 13.0, Color(1.0, 0.1, 0.06, 0.28))
 
 
+# 用途：繪製手機直式版左下角虛擬搖桿。
+func _draw_touch_controls() -> void:
+	if mode != Mode.PLAYING:
+		return
+	var knob_position := JOYSTICK_CENTER + touch_axis.limit_length(1.0) * JOYSTICK_RADIUS
+	draw_circle(JOYSTICK_CENTER, JOYSTICK_RADIUS, Color(0.85, 0.9, 0.88, 0.18))
+	draw_arc(JOYSTICK_CENTER, JOYSTICK_RADIUS, 0.0, TAU, 48, Color(0.8, 0.95, 0.92, 0.38), 3.0)
+	draw_circle(knob_position, JOYSTICK_KNOB_RADIUS, Color(0.1, 0.48, 0.95, 0.72))
+	draw_circle(knob_position, JOYSTICK_KNOB_RADIUS + 7.0, Color(0.15, 0.75, 1.0, 0.18))
+
+
 # 用途：繪製傷害、回血等浮動數字文字。
 func _draw_floating_texts() -> void:
 	for text in floating_texts:
@@ -653,16 +719,16 @@ func _draw_floating_texts() -> void:
 func _draw_overlay() -> void:
 	if mode == Mode.UPGRADE:
 		draw_rect(Rect2(Vector2.ZERO, VIEW_SIZE), Color(0.02, 0.03, 0.04, 0.72))
-		draw_string(ThemeDB.fallback_font, Vector2(348, 228), "Choose an ability", HORIZONTAL_ALIGNMENT_LEFT, -1, 34, Color(0.95, 0.96, 0.88))
+		draw_string(ThemeDB.fallback_font, Vector2(124, 232), "Choose an ability", HORIZONTAL_ALIGNMENT_LEFT, -1, 31, Color(0.95, 0.96, 0.88))
 		for i in upgrade_choices.size():
-			var card := Rect2(Vector2(178 + i * 222, 292), Vector2(190, 158))
+			var card := _upgrade_card_rect(i)
 			draw_rect(card, Color(0.11, 0.16, 0.18))
 			draw_rect(card, Color(0.54, 0.9, 0.82), false, 3.0)
-			draw_string(ThemeDB.fallback_font, card.position + Vector2(18, 38), "%d" % (i + 1), HORIZONTAL_ALIGNMENT_LEFT, -1, 28, Color(1.0, 0.86, 0.22))
-			draw_string(ThemeDB.fallback_font, card.position + Vector2(18, 78), upgrade_choices[i].name, HORIZONTAL_ALIGNMENT_LEFT, -1, 20, Color(0.95, 0.96, 0.88))
-			draw_string(ThemeDB.fallback_font, card.position + Vector2(18, 116), upgrade_choices[i].desc, HORIZONTAL_ALIGNMENT_LEFT, -1, 15, Color(0.76, 0.82, 0.78))
+			draw_string(ThemeDB.fallback_font, card.position + Vector2(20, 42), "%d" % (i + 1), HORIZONTAL_ALIGNMENT_LEFT, -1, 27, Color(1.0, 0.86, 0.22))
+			draw_string(ThemeDB.fallback_font, card.position + Vector2(72, 42), upgrade_choices[i].name, HORIZONTAL_ALIGNMENT_LEFT, -1, 22, Color(0.95, 0.96, 0.88))
+			draw_string(ThemeDB.fallback_font, card.position + Vector2(72, 78), upgrade_choices[i].desc, HORIZONTAL_ALIGNMENT_LEFT, -1, 16, Color(0.76, 0.82, 0.78))
 	elif mode == Mode.DEAD or mode == Mode.WON:
 		draw_rect(Rect2(Vector2.ZERO, VIEW_SIZE), Color(0.02, 0.03, 0.04, 0.74))
 		var title := "Chapter cleared" if mode == Mode.WON else "Run failed"
-		draw_string(ThemeDB.fallback_font, Vector2(372, 316), title, HORIZONTAL_ALIGNMENT_LEFT, -1, 38, Color(0.95, 0.96, 0.88))
-		draw_string(ThemeDB.fallback_font, Vector2(362, 366), "Press R to start a new run.", HORIZONTAL_ALIGNMENT_LEFT, -1, 20, Color(0.76, 0.82, 0.78))
+		draw_string(ThemeDB.fallback_font, Vector2(144, 392), title, HORIZONTAL_ALIGNMENT_LEFT, -1, 36, Color(0.95, 0.96, 0.88))
+		draw_string(ThemeDB.fallback_font, Vector2(130, 442), "Press R to start a new run.", HORIZONTAL_ALIGNMENT_LEFT, -1, 19, Color(0.76, 0.82, 0.78))
