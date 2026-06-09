@@ -295,8 +295,8 @@ func _update_enemies(delta: float) -> void:
 			elif distance > 420.0:
 				enemy.pos += to_player.normalized() * float(enemy.speed) * delta
 			if enemy.shoot_cd <= 0.0:
-				_fire_enemy_spread(enemy.pos, to_player.normalized(), 5, 0.22)
-				enemy.shoot_cd = rng.randf_range(1.0, 1.35)
+				_fire_enemy_spread(enemy.pos, to_player.normalized(), 3, 0.28)
+				enemy.shoot_cd = rng.randf_range(1.15, 1.55)
 		elif enemy.kind == "spitter" and distance < 520.0:
 			if distance < 220.0:
 				enemy.pos -= to_player.normalized() * float(enemy.speed) * 0.7 * delta

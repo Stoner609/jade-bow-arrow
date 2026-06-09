@@ -11,7 +11,7 @@ static func choose_kind(room_index: int, rng: RandomNumberGenerator) -> String:
 
 static func create(kind: String, room_index: int, position: Vector2, rng: RandomNumberGenerator) -> Dictionary:
 	var hp := 24 + room_index * 6
-	var speed := 92.0 + room_index * 5.0
+	var speed := 84.0 + room_index * 4.0
 	var touch := 9 + room_index
 	var radius := 19.0
 	if kind == "spitter":
@@ -19,16 +19,16 @@ static func create(kind: String, room_index: int, position: Vector2, rng: Random
 		speed = 74.0
 	elif kind == "runner":
 		hp = 18 + room_index * 5
-		speed = 138.0 + room_index * 4.0
+		speed = 132.0 + room_index * 4.0
 		touch = 8 + room_index
 	elif kind == "brute":
 		hp = 46 + room_index * 10
-		speed = 64.0
+		speed = 58.0
 		touch = 15 + room_index
 		radius = 22.0
 	elif kind == "boss":
 		hp = 280 + room_index * 28
-		speed = 58.0
+		speed = 52.0
 		touch = 20 + room_index
 		radius = 32.0
 
