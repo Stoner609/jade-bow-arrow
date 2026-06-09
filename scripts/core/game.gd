@@ -40,6 +40,8 @@ var pickups: Array = []
 var floating_texts: Array = []
 var obstacles: Array[Rect2] = []
 var touch_axis := Vector2.ZERO
+var joystick_center := Constants.JOYSTICK_CENTER
+var joystick_active := false
 var joystick_touch_index := -1
 
 
@@ -103,12 +105,16 @@ func _handle_touch_input(event: InputEvent) -> bool:
 					if _upgrade_card_rect(i).has_point(touch.position):
 						_take_upgrade(i)
 						return true
-			if touch.position.distance_to(Constants.JOYSTICK_CENTER) <= Constants.JOYSTICK_RADIUS * 1.65:
+			if Constants.JOYSTICK_TOUCH_ZONE.has_point(touch.position):
 				joystick_touch_index = touch.index
-				touch_axis = _joystick_axis(touch.position)
+				joystick_center = touch.position
+				joystick_active = true
+				touch_axis = Vector2.ZERO
 				return true
 		elif touch.index == joystick_touch_index:
 			joystick_touch_index = -1
+			joystick_center = Constants.JOYSTICK_CENTER
+			joystick_active = false
 			touch_axis = Vector2.ZERO
 			return true
 	elif event is InputEventScreenDrag and event.index == joystick_touch_index:
@@ -150,6 +156,8 @@ func _new_run() -> void:
 	floating_texts.clear()
 	messages.clear()
 	touch_axis = Vector2.ZERO
+	joystick_center = Constants.JOYSTICK_CENTER
+	joystick_active = false
 	joystick_touch_index = -1
 	PlayerModel.reset(player, _player_start_position())
 	_spawn_room()
@@ -506,12 +514,12 @@ func _player_start_position() -> Vector2:
 
 # 用途：將觸控位置轉換成虛擬搖桿的方向向量。
 func _joystick_axis(touch_position: Vector2) -> Vector2:
-	return TouchControls.joystick_axis(touch_position, Constants.JOYSTICK_CENTER, Constants.JOYSTICK_RADIUS)
+	return TouchControls.joystick_axis(touch_position, joystick_center, Constants.JOYSTICK_RADIUS)
 
 
 # 用途：取得直式升級選單中指定卡片的位置與大小。
 func _upgrade_card_rect(index: int) -> Rect2:
-	return Rect2(Vector2(54, 292 + index * 136), Vector2(432, 112))
+	return Rect2(Vector2(54, 274 + index * 126), Vector2(432, 106))
 
 
 # 用途：計算玩家目前等級升到下一級所需的經驗值。
@@ -563,7 +571,8 @@ func _draw_arena() -> void:
 			var cell_x: int = floori(float(x) / 64.0)
 			var cell_y: int = floori(float(y) / 64.0)
 			var tint: float = 0.025 if (cell_x + cell_y) % 2 == 0 else 0.0
-			draw_rect(Rect2(Vector2(x, y), Vector2(64, 64)), Color(0.12 + tint, 0.76 + tint, 0.69 + tint))
+			var tile_rect := Rect2(Vector2(x, y), Vector2(64, 64)).intersection(Constants.ARENA)
+			draw_rect(tile_rect, Color(0.12 + tint, 0.76 + tint, 0.69 + tint))
 	draw_rect(Constants.ARENA, Color(0.72, 0.95, 0.88), false, 4.0)
 	for obstacle in obstacles:
 		draw_rect(obstacle, Color(0.82, 0.85, 0.82))
@@ -632,10 +641,13 @@ func _draw_player() -> void:
 func _draw_touch_controls() -> void:
 	if mode != Mode.PLAYING:
 		return
-	var knob_position := Constants.JOYSTICK_CENTER + touch_axis.limit_length(1.0) * Constants.JOYSTICK_RADIUS
-	draw_circle(Constants.JOYSTICK_CENTER, Constants.JOYSTICK_RADIUS, Color(0.85, 0.9, 0.88, 0.18))
-	draw_arc(Constants.JOYSTICK_CENTER, Constants.JOYSTICK_RADIUS, 0.0, TAU, 48, Color(0.8, 0.95, 0.92, 0.38), 3.0)
-	draw_circle(knob_position, Constants.JOYSTICK_KNOB_RADIUS, Color(0.1, 0.48, 0.95, 0.72))
+	var center := joystick_center if joystick_active else Constants.JOYSTICK_CENTER
+	var knob_position := center + touch_axis.limit_length(1.0) * Constants.JOYSTICK_RADIUS
+	var base_alpha := 0.28 if joystick_active else 0.12
+	var ring_alpha := 0.5 if joystick_active else 0.24
+	draw_circle(center, Constants.JOYSTICK_RADIUS, Color(0.85, 0.9, 0.88, base_alpha))
+	draw_arc(center, Constants.JOYSTICK_RADIUS, 0.0, TAU, 48, Color(0.8, 0.95, 0.92, ring_alpha), 3.0)
+	draw_circle(knob_position, Constants.JOYSTICK_KNOB_RADIUS, Color(0.1, 0.48, 0.95, 0.78))
 	draw_circle(knob_position, Constants.JOYSTICK_KNOB_RADIUS + 7.0, Color(0.15, 0.75, 1.0, 0.18))
 
 
@@ -649,7 +661,7 @@ func _draw_floating_texts() -> void:
 func _draw_overlay() -> void:
 	if mode == Mode.UPGRADE:
 		draw_rect(Rect2(Vector2.ZERO, Constants.VIEW_SIZE), Color(0.02, 0.03, 0.04, 0.72))
-		draw_string(ThemeDB.fallback_font, Vector2(124, 232), "Choose an ability", HORIZONTAL_ALIGNMENT_LEFT, -1, 31, Color(0.95, 0.96, 0.88))
+		draw_string(ThemeDB.fallback_font, Vector2(124, 220), "Choose an ability", HORIZONTAL_ALIGNMENT_LEFT, -1, 31, Color(0.95, 0.96, 0.88))
 		for i in upgrade_choices.size():
 			var card := _upgrade_card_rect(i)
 			draw_rect(card, Color(0.11, 0.16, 0.18))
@@ -660,5 +672,5 @@ func _draw_overlay() -> void:
 	elif mode == Mode.DEAD or mode == Mode.WON:
 		draw_rect(Rect2(Vector2.ZERO, Constants.VIEW_SIZE), Color(0.02, 0.03, 0.04, 0.74))
 		var title := "Chapter cleared" if mode == Mode.WON else "Run failed"
-		draw_string(ThemeDB.fallback_font, Vector2(144, 392), title, HORIZONTAL_ALIGNMENT_LEFT, -1, 36, Color(0.95, 0.96, 0.88))
-		draw_string(ThemeDB.fallback_font, Vector2(130, 442), "Press R to start a new run.", HORIZONTAL_ALIGNMENT_LEFT, -1, 19, Color(0.76, 0.82, 0.78))
+		draw_string(ThemeDB.fallback_font, Vector2(144, 374), title, HORIZONTAL_ALIGNMENT_LEFT, -1, 36, Color(0.95, 0.96, 0.88))
+		draw_string(ThemeDB.fallback_font, Vector2(130, 424), "Press R to start a new run.", HORIZONTAL_ALIGNMENT_LEFT, -1, 19, Color(0.76, 0.82, 0.78))
