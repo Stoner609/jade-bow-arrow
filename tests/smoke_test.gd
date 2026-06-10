@@ -88,6 +88,17 @@ func _run() -> void:
 		push_error("Pickup scene node did not collect XP.")
 		quit(1)
 		return
+	var enemy_count_before: int = game.enemies.size()
+	var pickup_count_before: int = game.pickups.size()
+	game._damage_enemy(0, int(game.enemies[0].max_hp) + 1, Vector2.RIGHT)
+	if game.enemies.size() >= enemy_count_before:
+		push_error("Enemy node death signal did not remove the enemy.")
+		quit(1)
+		return
+	if game.pickups.size() <= pickup_count_before:
+		push_error("Enemy node death signal did not spawn a pickup.")
+		quit(1)
+		return
 
 	game.hud_view.pause_requested.emit()
 	if game.mode != game.Mode.PAUSED:

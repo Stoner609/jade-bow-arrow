@@ -157,7 +157,29 @@ func _create_enemy_node(enemy: Dictionary) -> Node2D:
 	var node := EnemyScene.instantiate() as Node2D
 	enemy_layer.add_child(node)
 	node.sync_from_model(enemy, elapsed)
+	node.damaged.connect(_on_enemy_damaged)
+	node.died.connect(_on_enemy_died)
 	return node
+
+
+# 用途：接收敵人節點受傷事件，顯示傷害數字。
+func _on_enemy_damaged(enemy: Dictionary, damage: int) -> void:
+	floating_texts.append({"pos": enemy.pos + Vector2(-12, -24), "text": str(damage), "color": Color(1.0, 0.9, 0.22), "life": 0.65})
+
+
+# 用途：接收敵人節點死亡事件，移除資料並產生掉落。
+func _on_enemy_died(enemy: Dictionary) -> void:
+	if not enemies.has(enemy):
+		return
+	var xp_value: int = 24 if enemy.kind == "boss" else 4 + room_index
+	var drop_pos: Vector2 = enemy.pos
+	_free_entity_node(enemy)
+	enemies.erase(enemy)
+	_spawn_pickup(PickupModel.xp(drop_pos, xp_value))
+	if enemy.kind == "boss":
+		_spawn_pickup(PickupModel.heart(drop_pos + Vector2(20, 12), 28))
+	elif rng.randf() < 0.16:
+		_spawn_pickup(PickupModel.heart(drop_pos + Vector2(rng.randf_range(-18, 18), rng.randf_range(-18, 18)), 12))
 
 
 # 用途：建立玩家或敵方投射物的場景節點。
@@ -451,7 +473,6 @@ func _update_enemies(delta: float) -> void:
 	for i in range(enemies.size() - 1, -1, -1):
 		var enemy: Dictionary = enemies[i]
 		enemy.hit_cd = max(0.0, float(enemy.hit_cd) - delta)
-		enemy.hit_flash = max(0.0, float(enemy.get("hit_flash", 0.0)) - delta)
 		enemy.shoot_cd = max(0.0, float(enemy.shoot_cd) - delta)
 
 		var to_player: Vector2 = player.pos - enemy.pos
@@ -514,23 +535,11 @@ func _update_enemy_shots(_delta: float) -> void:
 			enemy_shots.remove_at(i)
 
 
-# 用途：對指定敵人造成傷害，處理擊退、傷害文字、死亡掉落。
+# 用途：將傷害委派給敵人節點，節點負責生命、受傷閃爍與死亡訊號。
 func _damage_enemy(index: int, damage: int, direction: Vector2) -> void:
 	var enemy: Dictionary = enemies[index]
-	enemy.hp -= damage
-	enemy.hit_flash = 0.12
-	enemy.pos += direction * 8.0
-	floating_texts.append({"pos": enemy.pos + Vector2(-12, -24), "text": str(damage), "color": Color(1.0, 0.9, 0.22), "life": 0.65})
-	if enemy.hp <= 0:
-		var xp_value: int = 24 if enemy.kind == "boss" else 4 + room_index
-		var drop_pos: Vector2 = enemy.pos
-		_free_entity_node(enemy)
-		enemies.remove_at(index)
-		_spawn_pickup(PickupModel.xp(drop_pos, xp_value))
-		if enemy.kind == "boss":
-			_spawn_pickup(PickupModel.heart(drop_pos + Vector2(20, 12), 28))
-		elif rng.randf() < 0.16:
-			_spawn_pickup(PickupModel.heart(drop_pos + Vector2(rng.randf_range(-18, 18), rng.randf_range(-18, 18)), 12))
+	if enemy.has("node") and is_instance_valid(enemy.node):
+		enemy.node.apply_damage(damage, direction)
 
 
 # 用途：扣除玩家生命、顯示受傷效果，並在生命歸零時結束遊戲。
