@@ -12,7 +12,7 @@ const UpgradeCatalog := preload("res://scripts/ui/upgrade_catalog.gd")
 const TouchControls := preload("res://scripts/ui/touch_controls.gd")
 const CollisionUtils := preload("res://scripts/utils/collision_utils.gd")
 
-enum Mode { PLAYING, UPGRADE, DEAD, WON }
+enum Mode { START, PLAYING, UPGRADE, PAUSED, DEAD, WON }
 
 @onready var hud: Label = $CanvasLayer/HUD
 @onready var log_label: Label = $CanvasLayer/Log
@@ -28,6 +28,7 @@ var elapsed := 0.0
 var room_clear := false
 var fire_timer := 0.0
 var damage_flash := 0.0
+var muted := false
 var upgrade_choices: Array = []
 var messages: Array[String] = []
 
@@ -49,7 +50,7 @@ var joystick_touch_index := -1
 func _ready() -> void:
 	rng.randomize()
 	help_label.text = "Drag joystick: Move\nStop to auto-fire\nR: Restart"
-	_new_run()
+	_show_start_screen()
 
 
 # 用途：每一幀更新遊戲狀態，包括玩家、敵人、投射物、拾取物與畫面刷新。
@@ -57,6 +58,7 @@ func _process(delta: float) -> void:
 	if mode != Mode.PLAYING:
 		damage_flash = max(0.0, damage_flash - delta)
 		_update_floating_texts(delta)
+		_refresh()
 		queue_redraw()
 		return
 
@@ -82,7 +84,7 @@ func _unhandled_input(event: InputEvent) -> void:
 		return
 
 	if event.is_action_pressed("restart_run"):
-		_new_run()
+		_start_run()
 		return
 
 	if mode == Mode.UPGRADE:
@@ -100,12 +102,17 @@ func _handle_touch_input(event: InputEvent) -> bool:
 	if event is InputEventScreenTouch:
 		var touch := event as InputEventScreenTouch
 		if touch.pressed:
+			if _handle_overlay_touch(touch.position):
+				return true
 			if mode == Mode.UPGRADE:
 				for i in upgrade_choices.size():
 					if _upgrade_card_rect(i).has_point(touch.position):
 						_take_upgrade(i)
 						return true
-			if Constants.JOYSTICK_TOUCH_ZONE.has_point(touch.position):
+			if mode == Mode.PLAYING and _button_rect("pause").has_point(touch.position):
+				_pause_game()
+				return true
+			if mode == Mode.PLAYING and Constants.JOYSTICK_TOUCH_ZONE.has_point(touch.position):
 				joystick_touch_index = touch.index
 				joystick_center = touch.position
 				joystick_active = true
@@ -123,6 +130,39 @@ func _handle_touch_input(event: InputEvent) -> bool:
 	return false
 
 
+# 用途：處理開始、暫停、死亡、通關等覆蓋介面的觸控按鈕。
+func _handle_overlay_touch(position: Vector2) -> bool:
+	match mode:
+		Mode.START:
+			if _button_rect("start").has_point(position):
+				_start_run()
+				return true
+			if _button_rect("sound_start").has_point(position):
+				_toggle_sound()
+				return true
+		Mode.PAUSED:
+			if _button_rect("resume").has_point(position):
+				_resume_game()
+				return true
+			if _button_rect("restart_pause").has_point(position):
+				_start_run()
+				return true
+			if _button_rect("sound_pause").has_point(position):
+				_toggle_sound()
+				return true
+			if _button_rect("menu_pause").has_point(position):
+				_show_start_screen()
+				return true
+		Mode.DEAD, Mode.WON:
+			if _button_rect("restart_end").has_point(position):
+				_start_run()
+				return true
+			if _button_rect("menu_end").has_point(position):
+				_show_start_screen()
+				return true
+	return false
+
+
 # 用途：依序繪製背景、房間、物件、角色、敵人、特效與覆蓋介面。
 func _draw() -> void:
 	_draw_background()
@@ -135,11 +175,42 @@ func _draw() -> void:
 	_draw_player()
 	_draw_floating_texts()
 	_draw_touch_controls()
+	_draw_pause_button()
 	_draw_overlay()
 
 
 # 用途：重設玩家能力與關卡狀態，開始一輪新的遊戲流程。
 func _new_run() -> void:
+	_start_run()
+
+
+# 用途：顯示開始畫面並清空目前戰鬥狀態。
+func _show_start_screen() -> void:
+	mode = Mode.START
+	room_index = 1
+	wave_index = 0
+	total_waves = 1
+	wave_break_timer = 0.0
+	elapsed = 0.0
+	fire_timer = 0.0
+	damage_flash = 0.0
+	room_clear = false
+	enemies.clear()
+	arrows.clear()
+	enemy_shots.clear()
+	pickups.clear()
+	floating_texts.clear()
+	messages.clear()
+	touch_axis = Vector2.ZERO
+	joystick_center = Constants.JOYSTICK_CENTER
+	joystick_active = false
+	joystick_touch_index = -1
+	PlayerModel.reset(player, _player_start_position())
+	_refresh()
+
+
+# 用途：重設玩家與關卡，正式開始一輪遊戲。
+func _start_run() -> void:
 	mode = Mode.PLAYING
 	room_index = 1
 	wave_index = 0
@@ -369,6 +440,9 @@ func _damage_player(damage: int) -> void:
 	floating_texts.append({"pos": player.pos + Vector2(-18, -32), "text": "-%d" % damage, "color": Color(1.0, 0.2, 0.16), "life": 0.72})
 	if player.hp <= 0:
 		mode = Mode.DEAD
+		touch_axis = Vector2.ZERO
+		joystick_active = false
+		joystick_touch_index = -1
 		_log("You were overwhelmed. Press R to restart.")
 
 
@@ -417,6 +491,31 @@ func _take_upgrade(index: int) -> void:
 	_log("Upgrade: %s." % upgrade.name)
 	upgrade_choices.clear()
 	mode = Mode.PLAYING
+
+
+# 用途：進入暫停狀態並停止觸控搖桿輸入。
+func _pause_game() -> void:
+	if mode != Mode.PLAYING:
+		return
+	mode = Mode.PAUSED
+	touch_axis = Vector2.ZERO
+	joystick_center = Constants.JOYSTICK_CENTER
+	joystick_active = false
+	joystick_touch_index = -1
+	_log("Paused.")
+
+
+# 用途：從暫停狀態回到遊戲。
+func _resume_game() -> void:
+	if mode == Mode.PAUSED:
+		mode = Mode.PLAYING
+		_log("Resume.")
+
+
+# 用途：切換音效開關狀態，之後加入音效時可接到 AudioServer。
+func _toggle_sound() -> void:
+	muted = not muted
+	_log("Sound Off." if muted else "Sound On.")
 
 
 # 用途：確認房間敵人是否全滅，並在清場後開啟傳送門。
@@ -522,6 +621,30 @@ func _upgrade_card_rect(index: int) -> Rect2:
 	return Rect2(Vector2(54, 274 + index * 126), Vector2(432, 106))
 
 
+# 用途：取得手繪 UI 按鈕的位置。
+func _button_rect(id: String) -> Rect2:
+	match id:
+		"pause":
+			return Rect2(Vector2(468, 50), Vector2(46, 38))
+		"start":
+			return Rect2(Vector2(108, 392), Vector2(324, 58))
+		"sound_start":
+			return Rect2(Vector2(108, 468), Vector2(324, 52))
+		"resume":
+			return Rect2(Vector2(108, 334), Vector2(324, 54))
+		"restart_pause":
+			return Rect2(Vector2(108, 406), Vector2(324, 54))
+		"sound_pause":
+			return Rect2(Vector2(108, 478), Vector2(324, 54))
+		"menu_pause":
+			return Rect2(Vector2(108, 550), Vector2(324, 54))
+		"restart_end":
+			return Rect2(Vector2(108, 456), Vector2(324, 56))
+		"menu_end":
+			return Rect2(Vector2(108, 530), Vector2(324, 56))
+	return Rect2()
+
+
 # 用途：計算玩家目前等級升到下一級所需的經驗值。
 func _xp_needed() -> int:
 	return 14 + int(player.level) * 8
@@ -538,6 +661,11 @@ func _update_floating_texts(delta: float) -> void:
 
 # 用途：更新 HUD、訊息紀錄文字，並要求畫面重新繪製。
 func _refresh() -> void:
+	if mode == Mode.START:
+		hud.text = ""
+		log_label.text = ""
+		queue_redraw()
+		return
 	var xp_needed: int = _xp_needed()
 	hud.text = HudPresenter.hud_text(room_index, Constants.MAX_ROOMS, wave_index, total_waves, player, xp_needed)
 	log_label.text = HudPresenter.recent_messages(messages, 3)
@@ -651,15 +779,38 @@ func _draw_touch_controls() -> void:
 	draw_circle(knob_position, Constants.JOYSTICK_KNOB_RADIUS + 7.0, Color(0.15, 0.75, 1.0, 0.18))
 
 
+# 用途：繪製遊戲進行中的暫停按鈕。
+func _draw_pause_button() -> void:
+	if mode != Mode.PLAYING:
+		return
+	var rect := _button_rect("pause")
+	draw_rect(rect, Color(0.08, 0.12, 0.14, 0.72))
+	draw_rect(rect, Color(0.65, 0.88, 0.84, 0.75), false, 2.0)
+	draw_string(ThemeDB.fallback_font, rect.position + Vector2(14, 27), "II", HORIZONTAL_ALIGNMENT_LEFT, -1, 20, Color(0.9, 0.96, 0.92))
+
+
 # 用途：繪製傷害、回血等浮動數字文字。
 func _draw_floating_texts() -> void:
 	for text in floating_texts:
 		draw_string(ThemeDB.fallback_font, text.pos, text.text, HORIZONTAL_ALIGNMENT_LEFT, -1, 22, text.color)
 
 
+# 用途：繪製共用矩形按鈕。
+func _draw_button(rect: Rect2, label: String) -> void:
+	draw_rect(rect, Color(0.1, 0.16, 0.18, 0.94))
+	draw_rect(rect, Color(0.54, 0.9, 0.82), false, 2.5)
+	draw_string(ThemeDB.fallback_font, rect.position + Vector2(22, rect.size.y * 0.62), label, HORIZONTAL_ALIGNMENT_LEFT, -1, 22, Color(0.94, 0.98, 0.92))
+
+
 # 用途：繪製升級選擇、死亡與通關時的覆蓋介面。
 func _draw_overlay() -> void:
-	if mode == Mode.UPGRADE:
+	if mode == Mode.START:
+		draw_rect(Rect2(Vector2.ZERO, Constants.VIEW_SIZE), Color(0.02, 0.03, 0.04, 0.64))
+		draw_string(ThemeDB.fallback_font, Vector2(116, 284), "Jade Bow Arrow", HORIZONTAL_ALIGNMENT_LEFT, -1, 36, Color(0.95, 0.96, 0.88))
+		draw_string(ThemeDB.fallback_font, Vector2(110, 334), "Clear 8 rooms. Stop moving to fire.", HORIZONTAL_ALIGNMENT_LEFT, -1, 17, Color(0.72, 0.82, 0.78))
+		_draw_button(_button_rect("start"), "Start")
+		_draw_button(_button_rect("sound_start"), "Sound: %s" % ("Off" if muted else "On"))
+	elif mode == Mode.UPGRADE:
 		draw_rect(Rect2(Vector2.ZERO, Constants.VIEW_SIZE), Color(0.02, 0.03, 0.04, 0.72))
 		draw_string(ThemeDB.fallback_font, Vector2(124, 220), "Choose an ability", HORIZONTAL_ALIGNMENT_LEFT, -1, 31, Color(0.95, 0.96, 0.88))
 		for i in upgrade_choices.size():
@@ -669,8 +820,17 @@ func _draw_overlay() -> void:
 			draw_string(ThemeDB.fallback_font, card.position + Vector2(20, 42), "%d" % (i + 1), HORIZONTAL_ALIGNMENT_LEFT, -1, 27, Color(1.0, 0.86, 0.22))
 			draw_string(ThemeDB.fallback_font, card.position + Vector2(72, 42), upgrade_choices[i].name, HORIZONTAL_ALIGNMENT_LEFT, -1, 22, Color(0.95, 0.96, 0.88))
 			draw_string(ThemeDB.fallback_font, card.position + Vector2(72, 78), upgrade_choices[i].desc, HORIZONTAL_ALIGNMENT_LEFT, -1, 16, Color(0.76, 0.82, 0.78))
+	elif mode == Mode.PAUSED:
+		draw_rect(Rect2(Vector2.ZERO, Constants.VIEW_SIZE), Color(0.02, 0.03, 0.04, 0.72))
+		draw_string(ThemeDB.fallback_font, Vector2(202, 274), "Paused", HORIZONTAL_ALIGNMENT_LEFT, -1, 36, Color(0.95, 0.96, 0.88))
+		_draw_button(_button_rect("resume"), "Resume")
+		_draw_button(_button_rect("restart_pause"), "Restart")
+		_draw_button(_button_rect("sound_pause"), "Sound: %s" % ("Off" if muted else "On"))
+		_draw_button(_button_rect("menu_pause"), "Main Menu")
 	elif mode == Mode.DEAD or mode == Mode.WON:
 		draw_rect(Rect2(Vector2.ZERO, Constants.VIEW_SIZE), Color(0.02, 0.03, 0.04, 0.74))
 		var title := "Chapter cleared" if mode == Mode.WON else "Run failed"
 		draw_string(ThemeDB.fallback_font, Vector2(144, 374), title, HORIZONTAL_ALIGNMENT_LEFT, -1, 36, Color(0.95, 0.96, 0.88))
-		draw_string(ThemeDB.fallback_font, Vector2(130, 424), "Press R to start a new run.", HORIZONTAL_ALIGNMENT_LEFT, -1, 19, Color(0.76, 0.82, 0.78))
+		draw_string(ThemeDB.fallback_font, Vector2(142, 424), "Choose your next step.", HORIZONTAL_ALIGNMENT_LEFT, -1, 18, Color(0.76, 0.82, 0.78))
+		_draw_button(_button_rect("restart_end"), "Restart")
+		_draw_button(_button_rect("menu_end"), "Main Menu")

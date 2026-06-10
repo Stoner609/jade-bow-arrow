@@ -14,6 +14,17 @@ func _run() -> void:
 		push_error("Game script failed to load.")
 		quit(1)
 		return
+	if not "mode" in game:
+		push_error("Game controller properties are unavailable.")
+		quit(1)
+		return
+	if game.mode != game.Mode.START:
+		push_error("Game did not start on the start screen.")
+		quit(1)
+		return
+
+	game._start_run()
+	await process_frame
 
 	if game.obstacles.is_empty():
 		push_error("Room obstacles were not generated.")
@@ -60,6 +71,28 @@ func _run() -> void:
 	game._spawn_room()
 	if game.total_waves != 1 or game.enemies.is_empty() or game.enemies[0].kind != "boss":
 		push_error("Boss room did not spawn the expected boss wave.")
+		quit(1)
+		return
+
+	game._pause_game()
+	if game.mode != game.Mode.PAUSED:
+		push_error("Pause did not enter paused mode.")
+		quit(1)
+		return
+	game._resume_game()
+	if game.mode != game.Mode.PLAYING:
+		push_error("Resume did not return to playing mode.")
+		quit(1)
+		return
+	var was_muted: bool = game.muted
+	game._toggle_sound()
+	if game.muted == was_muted:
+		push_error("Sound toggle did not change muted state.")
+		quit(1)
+		return
+	game._show_start_screen()
+	if game.mode != game.Mode.START:
+		push_error("Main menu did not return to start mode.")
 		quit(1)
 		return
 
