@@ -74,6 +74,20 @@ func _run() -> void:
 		push_error("Projectile scene node was not instantiated.")
 		quit(1)
 		return
+	var arrow_start: Vector2 = game.arrows[0].pos
+	await process_frame
+	if game.arrows.is_empty() or game.arrows[0].pos == arrow_start:
+		push_error("Projectile scene node did not advance arrow position.")
+		quit(1)
+		return
+	var xp_before: int = game.player.xp
+	game._spawn_pickup(game.PickupModel.xp(game.player.pos + Vector2(24, 0), 3))
+	await process_frame
+	await process_frame
+	if game.player.xp <= xp_before:
+		push_error("Pickup scene node did not collect XP.")
+		quit(1)
+		return
 
 	game.hud_view.pause_requested.emit()
 	if game.mode != game.Mode.PAUSED:

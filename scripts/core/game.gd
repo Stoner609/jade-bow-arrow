@@ -165,7 +165,25 @@ func _create_projectile_node(projectile: Dictionary, kind: String) -> Node2D:
 	var node := ProjectileScene.instantiate() as Node2D
 	projectile_layer.add_child(node)
 	node.sync_from_model(projectile, kind)
+	node.expired.connect(_on_projectile_expired)
 	return node
+
+
+# 用途：接收投射物節點生命週期結束事件，並從資料陣列移除。
+func _on_projectile_expired(projectile: Dictionary) -> void:
+	if _remove_projectile_from(arrows, projectile):
+		return
+	_remove_projectile_from(enemy_shots, projectile)
+
+
+# 用途：從指定投射物陣列移除同一筆資料與節點。
+func _remove_projectile_from(projectiles: Array, projectile: Dictionary) -> bool:
+	for i in range(projectiles.size() - 1, -1, -1):
+		if projectiles[i] == projectile:
+			_free_entity_node(projectiles[i])
+			projectiles.remove_at(i)
+			return true
+	return false
 
 
 # 用途：建立拾取物資料與對應的場景節點。
@@ -179,7 +197,22 @@ func _create_pickup_node(pickup: Dictionary) -> Node2D:
 	var node := PickupScene.instantiate() as Node2D
 	pickup_layer.add_child(node)
 	node.sync_from_model(pickup)
+	node.set_player_position(player.pos)
+	node.picked.connect(_on_pickup_picked)
 	return node
+
+
+# 用途：接收拾取物節點抵達玩家事件，套用獎勵並移除資料。
+func _on_pickup_picked(pickup: Dictionary) -> void:
+	if not pickups.has(pickup):
+		return
+	if pickup.kind == "xp":
+		_gain_xp(int(pickup.value))
+	else:
+		player.hp = min(int(player.max_hp), int(player.hp) + int(pickup.value))
+		floating_texts.append({"pos": player.pos + Vector2(-18, -36), "text": "+%d" % int(pickup.value), "color": Color(0.25, 1.0, 0.45), "life": 0.72})
+	_free_entity_node(pickup)
+	pickups.erase(pickup)
 
 
 # 用途：同步目前資料模型到已建立的場景節點。
@@ -202,6 +235,7 @@ func _sync_scene_nodes() -> void:
 	for pickup in pickups:
 		if not pickup.has("node") or not is_instance_valid(pickup.node):
 			pickup["node"] = _create_pickup_node(pickup)
+		pickup.node.set_player_position(player.pos)
 		pickup.node.sync_from_model(pickup)
 
 
@@ -380,13 +414,11 @@ func _fire_at_nearest_enemy() -> void:
 
 
 # 用途：更新玩家箭矢飛行、碰撞、穿透、彈射與命中傷害。
-func _update_arrows(delta: float) -> void:
+func _update_arrows(_delta: float) -> void:
 	for i in range(arrows.size() - 1, -1, -1):
 		var arrow: Dictionary = arrows[i]
-		arrow.pos += arrow.vel * delta
-		arrow.life -= delta
 
-		if not Constants.ARENA.has_point(arrow.pos) or _point_in_obstacle(arrow.pos, Constants.ARROW_RADIUS) or arrow.life <= 0.0:
+		if not Constants.ARENA.has_point(arrow.pos) or _point_in_obstacle(arrow.pos, Constants.ARROW_RADIUS):
 			_free_entity_node(arrow)
 			arrows.remove_at(i)
 			continue
@@ -404,6 +436,8 @@ func _update_arrows(delta: float) -> void:
 				var dir: Vector2 = (enemies[next].pos - arrow.pos).normalized()
 				arrow.vel = dir * 585.0
 				arrow.ricocheted = true
+				if arrow.has("node") and is_instance_valid(arrow.node):
+					arrow.node.set_velocity(arrow.vel)
 			else:
 				_free_entity_node(arrow)
 				arrows.remove_at(i)
@@ -465,13 +499,11 @@ func _fire_enemy_spread(origin: Vector2, direction: Vector2, count: int, spread:
 
 
 # 用途：更新敵人子彈飛行、撞牆消失與命中玩家傷害。
-func _update_enemy_shots(delta: float) -> void:
+func _update_enemy_shots(_delta: float) -> void:
 	for i in range(enemy_shots.size() - 1, -1, -1):
 		var shot: Dictionary = enemy_shots[i]
-		shot.pos += shot.vel * delta
-		shot.life -= delta
 
-		if not Constants.ARENA.has_point(shot.pos) or _point_in_obstacle(shot.pos, 7.0) or shot.life <= 0.0:
+		if not Constants.ARENA.has_point(shot.pos) or _point_in_obstacle(shot.pos, 7.0):
 			_free_entity_node(shot)
 			enemy_shots.remove_at(i)
 			continue
@@ -514,21 +546,11 @@ func _damage_player(damage: int) -> void:
 		_log("You were overwhelmed. Press R to restart.")
 
 
-# 用途：處理拾取物靠近玩家時吸附、取得 XP 或回血的效果。
+# 用途：更新拾取物節點需要的玩家位置，吸附與拾取由 Pickup node 處理。
 func _update_pickups() -> void:
-	for i in range(pickups.size() - 1, -1, -1):
-		var pickup: Dictionary = pickups[i]
-		if pickup.pos.distance_to(player.pos) > 135.0:
-			continue
-		pickup.pos = pickup.pos.move_toward(player.pos, 7.0)
-		if pickup.pos.distance_to(player.pos) <= Constants.PLAYER_RADIUS + Constants.PICKUP_RADIUS:
-			if pickup.kind == "xp":
-				_gain_xp(int(pickup.value))
-			else:
-				player.hp = min(int(player.max_hp), int(player.hp) + int(pickup.value))
-				floating_texts.append({"pos": player.pos + Vector2(-18, -36), "text": "+%d" % int(pickup.value), "color": Color(0.25, 1.0, 0.45), "life": 0.72})
-			_free_entity_node(pickup)
-			pickups.remove_at(i)
+	for pickup in pickups:
+		if pickup.has("node") and is_instance_valid(pickup.node):
+			pickup.node.set_player_position(player.pos)
 
 
 # 用途：增加玩家經驗值，達成需求時升級並進入能力選擇。
