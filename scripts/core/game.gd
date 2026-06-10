@@ -12,12 +12,19 @@ const UpgradeCatalog := preload("res://scripts/ui/upgrade_catalog.gd")
 const TouchControls := preload("res://scripts/ui/touch_controls.gd")
 const CollisionUtils := preload("res://scripts/utils/collision_utils.gd")
 const CombatRenderer := preload("res://scripts/rendering/combat_renderer.gd")
+const PlayerScene := preload("res://scenes/actors/Player.tscn")
+const EnemyScene := preload("res://scenes/actors/Enemy.tscn")
+const ProjectileScene := preload("res://scenes/projectiles/Projectile.tscn")
+const PickupScene := preload("res://scenes/pickups/Pickup.tscn")
 
 enum Mode { START, PLAYING, UPGRADE, PAUSED, DEAD, WON }
 
-@onready var hud: Label = $CanvasLayer/HUD
-@onready var log_label: Label = $CanvasLayer/Log
-@onready var help_label: Label = $CanvasLayer/Help
+@onready var world_layer: Node2D = $World
+@onready var pickup_layer: Node2D = $World/PickupLayer
+@onready var projectile_layer: Node2D = $World/ProjectileLayer
+@onready var enemy_layer: Node2D = $World/EnemyLayer
+@onready var player_layer: Node2D = $World/PlayerLayer
+@onready var hud_view: CanvasLayer = $HUD
 
 var rng := RandomNumberGenerator.new()
 var mode := Mode.PLAYING
@@ -45,12 +52,16 @@ var touch_axis := Vector2.ZERO
 var joystick_center := Constants.JOYSTICK_CENTER
 var joystick_active := false
 var joystick_touch_index := -1
+var player_node: Node2D
 
 
 # 用途：初始化隨機數、說明文字，並開始一局新遊戲。
 func _ready() -> void:
 	rng.randomize()
-	help_label.text = "Drag joystick: Move\nStop to auto-fire\nR: Restart"
+	player_node = PlayerScene.instantiate()
+	player_layer.add_child(player_node)
+	_connect_hud_signals()
+	hud_view.set_help_text("Drag joystick: Move\nStop to auto-fire\nR: Restart")
 	_show_start_screen()
 
 
@@ -103,16 +114,6 @@ func _handle_touch_input(event: InputEvent) -> bool:
 	if event is InputEventScreenTouch:
 		var touch := event as InputEventScreenTouch
 		if touch.pressed:
-			if _handle_overlay_touch(touch.position):
-				return true
-			if mode == Mode.UPGRADE:
-				for i in upgrade_choices.size():
-					if _upgrade_card_rect(i).has_point(touch.position):
-						_take_upgrade(i)
-						return true
-			if mode == Mode.PLAYING and _button_rect("pause").has_point(touch.position):
-				_pause_game()
-				return true
 			if mode == Mode.PLAYING and Constants.JOYSTICK_TOUCH_ZONE.has_point(touch.position):
 				joystick_touch_index = touch.index
 				joystick_center = touch.position
@@ -131,54 +132,102 @@ func _handle_touch_input(event: InputEvent) -> bool:
 	return false
 
 
-# 用途：處理開始、暫停、死亡、通關等覆蓋介面的觸控按鈕。
-func _handle_overlay_touch(position: Vector2) -> bool:
-	match mode:
-		Mode.START:
-			if _button_rect("start").has_point(position):
-				_start_run()
-				return true
-			if _button_rect("sound_start").has_point(position):
-				_toggle_sound()
-				return true
-		Mode.PAUSED:
-			if _button_rect("resume").has_point(position):
-				_resume_game()
-				return true
-			if _button_rect("restart_pause").has_point(position):
-				_start_run()
-				return true
-			if _button_rect("sound_pause").has_point(position):
-				_toggle_sound()
-				return true
-			if _button_rect("menu_pause").has_point(position):
-				_show_start_screen()
-				return true
-		Mode.DEAD, Mode.WON:
-			if _button_rect("restart_end").has_point(position):
-				_start_run()
-				return true
-			if _button_rect("menu_end").has_point(position):
-				_show_start_screen()
-				return true
-	return false
-
-
 # 用途：依序繪製背景、房間、物件、角色、敵人、特效與覆蓋介面。
 func _draw() -> void:
 	_draw_background()
 	_draw_arena()
 	_draw_gate()
-	_draw_pickups()
-	_draw_arrows()
-	_draw_enemy_shots()
-	_draw_enemies()
-	_draw_boss_health()
-	_draw_player()
 	_draw_floating_texts()
 	_draw_touch_controls()
-	_draw_pause_button()
-	_draw_overlay()
+
+
+# 用途：連接 HUD 場景按鈕訊號到遊戲流程。
+func _connect_hud_signals() -> void:
+	hud_view.start_requested.connect(_start_run)
+	hud_view.pause_requested.connect(_pause_game)
+	hud_view.resume_requested.connect(_resume_game)
+	hud_view.restart_requested.connect(_start_run)
+	hud_view.menu_requested.connect(_show_start_screen)
+	hud_view.sound_toggle_requested.connect(_toggle_sound)
+	hud_view.upgrade_selected.connect(_take_upgrade)
+
+
+# 用途：建立敵人的場景節點，讓視覺呈現在 scene tree 中。
+func _create_enemy_node(enemy: Dictionary) -> Node2D:
+	var node := EnemyScene.instantiate() as Node2D
+	enemy_layer.add_child(node)
+	node.sync_from_model(enemy, elapsed)
+	return node
+
+
+# 用途：建立玩家或敵方投射物的場景節點。
+func _create_projectile_node(projectile: Dictionary, kind: String) -> Node2D:
+	var node := ProjectileScene.instantiate() as Node2D
+	projectile_layer.add_child(node)
+	node.sync_from_model(projectile, kind)
+	return node
+
+
+# 用途：建立拾取物資料與對應的場景節點。
+func _spawn_pickup(pickup: Dictionary) -> void:
+	pickup["node"] = _create_pickup_node(pickup)
+	pickups.append(pickup)
+
+
+# 用途：建立拾取物的場景節點。
+func _create_pickup_node(pickup: Dictionary) -> Node2D:
+	var node := PickupScene.instantiate() as Node2D
+	pickup_layer.add_child(node)
+	node.sync_from_model(pickup)
+	return node
+
+
+# 用途：同步目前資料模型到已建立的場景節點。
+func _sync_scene_nodes() -> void:
+	world_layer.visible = mode == Mode.PLAYING
+	if is_instance_valid(player_node):
+		player_node.sync_from_model(player, enemies, touch_axis, damage_flash)
+	for enemy in enemies:
+		if not enemy.has("node") or not is_instance_valid(enemy.node):
+			enemy["node"] = _create_enemy_node(enemy)
+		enemy.node.sync_from_model(enemy, elapsed)
+	for arrow in arrows:
+		if not arrow.has("node") or not is_instance_valid(arrow.node):
+			arrow["node"] = _create_projectile_node(arrow, "player_arrow")
+		arrow.node.sync_from_model(arrow, "player_arrow")
+	for shot in enemy_shots:
+		if not shot.has("node") or not is_instance_valid(shot.node):
+			shot["node"] = _create_projectile_node(shot, "enemy_shot")
+		shot.node.sync_from_model(shot, "enemy_shot")
+	for pickup in pickups:
+		if not pickup.has("node") or not is_instance_valid(pickup.node):
+			pickup["node"] = _create_pickup_node(pickup)
+		pickup.node.sync_from_model(pickup)
+
+
+# 用途：釋放指定資料物件綁定的場景節點。
+func _free_entity_node(entity: Dictionary) -> void:
+	if entity.has("node") and is_instance_valid(entity.node):
+		entity.node.queue_free()
+	entity.erase("node")
+
+
+# 用途：清空指定節點容器底下所有子節點。
+func _clear_layer_nodes(layer: Node) -> void:
+	for child in layer.get_children():
+		child.queue_free()
+
+
+# 用途：清空所有戰鬥物件節點，但保留玩家節點。
+func _clear_combat_nodes() -> void:
+	_clear_layer_nodes(enemy_layer)
+	_clear_layer_nodes(projectile_layer)
+	_clear_layer_nodes(pickup_layer)
+
+
+# 用途：清空玩家與敵人的投射物節點。
+func _clear_projectile_nodes() -> void:
+	_clear_layer_nodes(projectile_layer)
 
 
 # 用途：重設玩家能力與關卡狀態，開始一輪新的遊戲流程。
@@ -197,6 +246,7 @@ func _show_start_screen() -> void:
 	fire_timer = 0.0
 	damage_flash = 0.0
 	room_clear = false
+	_clear_combat_nodes()
 	enemies.clear()
 	arrows.clear()
 	enemy_shots.clear()
@@ -222,6 +272,7 @@ func _start_run() -> void:
 	fire_timer = 0.0
 	damage_flash = 0.0
 	room_clear = false
+	_clear_combat_nodes()
 	enemies.clear()
 	arrows.clear()
 	enemy_shots.clear()
@@ -241,6 +292,7 @@ func _start_run() -> void:
 # 用途：建立目前房間的障礙物、敵人與戰鬥狀態。
 func _spawn_room() -> void:
 	room_clear = false
+	_clear_combat_nodes()
 	enemies.clear()
 	arrows.clear()
 	enemy_shots.clear()
@@ -271,7 +323,9 @@ func _generate_obstacles() -> void:
 
 # 用途：依敵人類型建立敵人的生命、速度、傷害與初始位置。
 func _spawn_enemy(kind: String) -> void:
-	enemies.append(EnemyModel.create(kind, room_index, _random_spawn_position(), rng))
+	var enemy := EnemyModel.create(kind, room_index, _random_spawn_position(), rng)
+	enemy["node"] = _create_enemy_node(enemy)
+	enemies.append(enemy)
 
 
 # 用途：尋找遠離玩家且不在障礙物內的敵人出生位置。
@@ -320,7 +374,9 @@ func _fire_at_nearest_enemy() -> void:
 		if count > 1:
 			offset = (float(i) - float(count - 1) * 0.5) * spread
 		var dir := base_dir.rotated(offset)
-		arrows.append(ArrowModel.create(player.pos, dir, int(player.power), int(player.pierce)))
+		var arrow := ArrowModel.create(player.pos, dir, int(player.power), int(player.pierce))
+		arrow["node"] = _create_projectile_node(arrow, "player_arrow")
+		arrows.append(arrow)
 
 
 # 用途：更新玩家箭矢飛行、碰撞、穿透、彈射與命中傷害。
@@ -331,6 +387,7 @@ func _update_arrows(delta: float) -> void:
 		arrow.life -= delta
 
 		if not Constants.ARENA.has_point(arrow.pos) or _point_in_obstacle(arrow.pos, Constants.ARROW_RADIUS) or arrow.life <= 0.0:
+			_free_entity_node(arrow)
 			arrows.remove_at(i)
 			continue
 
@@ -348,8 +405,10 @@ func _update_arrows(delta: float) -> void:
 				arrow.vel = dir * 585.0
 				arrow.ricocheted = true
 			else:
+				_free_entity_node(arrow)
 				arrows.remove_at(i)
 		else:
+			_free_entity_node(arrow)
 			arrows.remove_at(i)
 
 
@@ -391,7 +450,9 @@ func _update_enemies(delta: float) -> void:
 
 # 用途：從指定位置朝指定方向產生敵人的遠程子彈。
 func _fire_enemy_shot(origin: Vector2, direction: Vector2) -> void:
-	enemy_shots.append(EnemyShotModel.create(origin, direction, room_index))
+	var shot := EnemyShotModel.create(origin, direction, room_index)
+	shot["node"] = _create_projectile_node(shot, "enemy_shot")
+	enemy_shots.append(shot)
 
 
 # 用途：讓 Boss 或特殊敵人一次發射多顆散射子彈。
@@ -411,11 +472,13 @@ func _update_enemy_shots(delta: float) -> void:
 		shot.life -= delta
 
 		if not Constants.ARENA.has_point(shot.pos) or _point_in_obstacle(shot.pos, 7.0) or shot.life <= 0.0:
+			_free_entity_node(shot)
 			enemy_shots.remove_at(i)
 			continue
 
 		if shot.pos.distance_to(player.pos) <= Constants.PLAYER_RADIUS + 7.0:
 			_damage_player(int(shot.damage))
+			_free_entity_node(shot)
 			enemy_shots.remove_at(i)
 
 
@@ -429,12 +492,13 @@ func _damage_enemy(index: int, damage: int, direction: Vector2) -> void:
 	if enemy.hp <= 0:
 		var xp_value: int = 24 if enemy.kind == "boss" else 4 + room_index
 		var drop_pos: Vector2 = enemy.pos
+		_free_entity_node(enemy)
 		enemies.remove_at(index)
-		pickups.append(PickupModel.xp(drop_pos, xp_value))
+		_spawn_pickup(PickupModel.xp(drop_pos, xp_value))
 		if enemy.kind == "boss":
-			pickups.append(PickupModel.heart(drop_pos + Vector2(20, 12), 28))
+			_spawn_pickup(PickupModel.heart(drop_pos + Vector2(20, 12), 28))
 		elif rng.randf() < 0.16:
-			pickups.append(PickupModel.heart(drop_pos + Vector2(rng.randf_range(-18, 18), rng.randf_range(-18, 18)), 12))
+			_spawn_pickup(PickupModel.heart(drop_pos + Vector2(rng.randf_range(-18, 18), rng.randf_range(-18, 18)), 12))
 
 
 # 用途：扣除玩家生命、顯示受傷效果，並在生命歸零時結束遊戲。
@@ -463,6 +527,7 @@ func _update_pickups() -> void:
 			else:
 				player.hp = min(int(player.max_hp), int(player.hp) + int(pickup.value))
 				floating_texts.append({"pos": player.pos + Vector2(-18, -36), "text": "+%d" % int(pickup.value), "color": Color(0.25, 1.0, 0.45), "life": 0.72})
+			_free_entity_node(pickup)
 			pickups.remove_at(i)
 
 
@@ -527,13 +592,15 @@ func _check_room_clear() -> void:
 	if room_clear or enemies.size() > 0:
 		return
 	if wave_index < total_waves:
-		if wave_break_timer <= 0.0:
-			wave_break_timer = 1.15
-			arrows.clear()
-			enemy_shots.clear()
-			_log("Wave clear. Next wave incoming.")
-		return
+			if wave_break_timer <= 0.0:
+				wave_break_timer = 1.15
+				_clear_projectile_nodes()
+				arrows.clear()
+				enemy_shots.clear()
+				_log("Wave clear. Next wave incoming.")
+			return
 	room_clear = true
+	_clear_projectile_nodes()
 	arrows.clear()
 	enemy_shots.clear()
 	_log("Room clear. Enter the glowing gate.")
@@ -620,35 +687,6 @@ func _joystick_axis(touch_position: Vector2) -> Vector2:
 	return TouchControls.joystick_axis(touch_position, joystick_center, Constants.JOYSTICK_RADIUS)
 
 
-# 用途：取得直式升級選單中指定卡片的位置與大小。
-func _upgrade_card_rect(index: int) -> Rect2:
-	return Rect2(Vector2(54, 274 + index * 126), Vector2(432, 106))
-
-
-# 用途：取得手繪 UI 按鈕的位置。
-func _button_rect(id: String) -> Rect2:
-	match id:
-		"pause":
-			return Rect2(Vector2(468, 50), Vector2(46, 38))
-		"start":
-			return Rect2(Vector2(108, 392), Vector2(324, 58))
-		"sound_start":
-			return Rect2(Vector2(108, 468), Vector2(324, 52))
-		"resume":
-			return Rect2(Vector2(108, 334), Vector2(324, 54))
-		"restart_pause":
-			return Rect2(Vector2(108, 406), Vector2(324, 54))
-		"sound_pause":
-			return Rect2(Vector2(108, 478), Vector2(324, 54))
-		"menu_pause":
-			return Rect2(Vector2(108, 550), Vector2(324, 54))
-		"restart_end":
-			return Rect2(Vector2(108, 456), Vector2(324, 56))
-		"menu_end":
-			return Rect2(Vector2(108, 530), Vector2(324, 56))
-	return Rect2()
-
-
 # 用途：計算玩家目前等級升到下一級所需的經驗值。
 func _xp_needed() -> int:
 	return 14 + int(player.level) * 8
@@ -665,14 +703,16 @@ func _update_floating_texts(delta: float) -> void:
 
 # 用途：更新 HUD、訊息紀錄文字，並要求畫面重新繪製。
 func _refresh() -> void:
+	_sync_scene_nodes()
+	hud_view.set_mode(mode, muted, upgrade_choices)
 	if mode == Mode.START:
-		hud.text = ""
-		log_label.text = ""
+		hud_view.set_hud_text("")
+		hud_view.set_log_text("")
 		queue_redraw()
 		return
 	var xp_needed: int = _xp_needed()
-	hud.text = HudPresenter.hud_text(room_index, Constants.MAX_ROOMS, wave_index, total_waves, player, xp_needed)
-	log_label.text = HudPresenter.recent_messages(messages, 3)
+	hud_view.set_hud_text(HudPresenter.hud_text(room_index, Constants.MAX_ROOMS, wave_index, total_waves, player, xp_needed))
+	hud_view.set_log_text(HudPresenter.recent_messages(messages, 3))
 	queue_redraw()
 
 
@@ -718,39 +758,6 @@ func _draw_gate() -> void:
 	CombatRenderer.draw_gate(self, _gate_position(), elapsed, Constants.GATE_RADIUS)
 
 
-# 用途：繪製 XP 與回血拾取物，以及它們的外圈光暈。
-func _draw_pickups() -> void:
-	for pickup in pickups:
-		var color: Color = PickupModel.color_for(pickup.kind)
-		draw_circle(pickup.pos, Constants.PICKUP_RADIUS, color)
-		draw_circle(pickup.pos, Constants.PICKUP_RADIUS + 4.0, Color(color.r, color.g, color.b, 0.2))
-
-
-# 用途：繪製玩家射出的箭矢與箭頭亮點。
-func _draw_arrows() -> void:
-	CombatRenderer.draw_arrows(self, arrows)
-
-
-# 用途：繪製敵人的遠程子彈與光暈。
-func _draw_enemy_shots() -> void:
-	CombatRenderer.draw_enemy_shots(self, enemy_shots)
-
-
-# 用途：繪製敵人外觀、眼睛與生命條。
-func _draw_enemies() -> void:
-	CombatRenderer.draw_enemies(self, enemies, elapsed, Constants.ENEMY_RADIUS)
-
-
-# 用途：繪製 Boss 專用大血條，讓玩家不用只看場上的小血條。
-func _draw_boss_health() -> void:
-	CombatRenderer.draw_boss_health(self, enemies)
-
-
-# 用途：繪製玩家角色、武器線條與受傷閃爍效果。
-func _draw_player() -> void:
-	CombatRenderer.draw_player(self, player, enemies, touch_axis, damage_flash, Constants.PLAYER_RADIUS)
-
-
 # 用途：繪製手機直式版左下角虛擬搖桿。
 func _draw_touch_controls() -> void:
 	if mode != Mode.PLAYING:
@@ -765,58 +772,7 @@ func _draw_touch_controls() -> void:
 	draw_circle(knob_position, Constants.JOYSTICK_KNOB_RADIUS + 7.0, Color(0.15, 0.75, 1.0, 0.18))
 
 
-# 用途：繪製遊戲進行中的暫停按鈕。
-func _draw_pause_button() -> void:
-	if mode != Mode.PLAYING:
-		return
-	var rect := _button_rect("pause")
-	draw_rect(rect, Color(0.08, 0.12, 0.14, 0.72))
-	draw_rect(rect, Color(0.65, 0.88, 0.84, 0.75), false, 2.0)
-	draw_string(ThemeDB.fallback_font, rect.position + Vector2(14, 27), "II", HORIZONTAL_ALIGNMENT_LEFT, -1, 20, Color(0.9, 0.96, 0.92))
-
-
 # 用途：繪製傷害、回血等浮動數字文字。
 func _draw_floating_texts() -> void:
 	for text in floating_texts:
 		draw_string(ThemeDB.fallback_font, text.pos, text.text, HORIZONTAL_ALIGNMENT_LEFT, -1, 22, text.color)
-
-
-# 用途：繪製共用矩形按鈕。
-func _draw_button(rect: Rect2, label: String) -> void:
-	draw_rect(rect, Color(0.1, 0.16, 0.18, 0.94))
-	draw_rect(rect, Color(0.54, 0.9, 0.82), false, 2.5)
-	draw_string(ThemeDB.fallback_font, rect.position + Vector2(22, rect.size.y * 0.62), label, HORIZONTAL_ALIGNMENT_LEFT, -1, 22, Color(0.94, 0.98, 0.92))
-
-
-# 用途：繪製升級選擇、死亡與通關時的覆蓋介面。
-func _draw_overlay() -> void:
-	if mode == Mode.START:
-		draw_rect(Rect2(Vector2.ZERO, Constants.VIEW_SIZE), Color(0.02, 0.03, 0.04, 0.64))
-		draw_string(ThemeDB.fallback_font, Vector2(116, 284), "Jade Bow Arrow", HORIZONTAL_ALIGNMENT_LEFT, -1, 36, Color(0.95, 0.96, 0.88))
-		draw_string(ThemeDB.fallback_font, Vector2(110, 334), "Clear 8 rooms. Stop moving to fire.", HORIZONTAL_ALIGNMENT_LEFT, -1, 17, Color(0.72, 0.82, 0.78))
-		_draw_button(_button_rect("start"), "Start")
-		_draw_button(_button_rect("sound_start"), "Sound: %s" % ("Off" if muted else "On"))
-	elif mode == Mode.UPGRADE:
-		draw_rect(Rect2(Vector2.ZERO, Constants.VIEW_SIZE), Color(0.02, 0.03, 0.04, 0.72))
-		draw_string(ThemeDB.fallback_font, Vector2(124, 220), "Choose an ability", HORIZONTAL_ALIGNMENT_LEFT, -1, 31, Color(0.95, 0.96, 0.88))
-		for i in upgrade_choices.size():
-			var card := _upgrade_card_rect(i)
-			draw_rect(card, Color(0.11, 0.16, 0.18))
-			draw_rect(card, Color(0.54, 0.9, 0.82), false, 3.0)
-			draw_string(ThemeDB.fallback_font, card.position + Vector2(20, 42), "%d" % (i + 1), HORIZONTAL_ALIGNMENT_LEFT, -1, 27, Color(1.0, 0.86, 0.22))
-			draw_string(ThemeDB.fallback_font, card.position + Vector2(72, 42), upgrade_choices[i].name, HORIZONTAL_ALIGNMENT_LEFT, -1, 22, Color(0.95, 0.96, 0.88))
-			draw_string(ThemeDB.fallback_font, card.position + Vector2(72, 78), upgrade_choices[i].desc, HORIZONTAL_ALIGNMENT_LEFT, -1, 16, Color(0.76, 0.82, 0.78))
-	elif mode == Mode.PAUSED:
-		draw_rect(Rect2(Vector2.ZERO, Constants.VIEW_SIZE), Color(0.02, 0.03, 0.04, 0.72))
-		draw_string(ThemeDB.fallback_font, Vector2(202, 274), "Paused", HORIZONTAL_ALIGNMENT_LEFT, -1, 36, Color(0.95, 0.96, 0.88))
-		_draw_button(_button_rect("resume"), "Resume")
-		_draw_button(_button_rect("restart_pause"), "Restart")
-		_draw_button(_button_rect("sound_pause"), "Sound: %s" % ("Off" if muted else "On"))
-		_draw_button(_button_rect("menu_pause"), "Main Menu")
-	elif mode == Mode.DEAD or mode == Mode.WON:
-		draw_rect(Rect2(Vector2.ZERO, Constants.VIEW_SIZE), Color(0.02, 0.03, 0.04, 0.74))
-		var title := "Chapter cleared" if mode == Mode.WON else "Run failed"
-		draw_string(ThemeDB.fallback_font, Vector2(144, 374), title, HORIZONTAL_ALIGNMENT_LEFT, -1, 36, Color(0.95, 0.96, 0.88))
-		draw_string(ThemeDB.fallback_font, Vector2(142, 424), "Choose your next step.", HORIZONTAL_ALIGNMENT_LEFT, -1, 18, Color(0.76, 0.82, 0.78))
-		_draw_button(_button_rect("restart_end"), "Restart")
-		_draw_button(_button_rect("menu_end"), "Main Menu")

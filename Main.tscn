@@ -1,35 +1,19 @@
-[gd_scene load_steps=2 format=3 uid="uid://cimr208k54s8w"]
+[gd_scene load_steps=3 format=3 uid="uid://cimr208k54s8w"]
 
 [ext_resource type="Script" path="res://scripts/core/game.gd" id="1_game"]
+[ext_resource type="PackedScene" path="res://scenes/ui/HUD.tscn" id="2_hud"]
 
 [node name="Game" type="Node2D"]
 script = ExtResource("1_game")
 
-[node name="CanvasLayer" type="CanvasLayer" parent="."]
+[node name="World" type="Node2D" parent="."]
 
-[node name="HUD" type="Label" parent="CanvasLayer"]
-offset_left = 20.0
-offset_top = 48.0
-offset_right = 520.0
-offset_bottom = 108.0
-theme_override_colors/font_color = Color(0.88, 0.92, 0.86, 1)
-theme_override_font_sizes/font_size = 16
+[node name="PickupLayer" type="Node2D" parent="World"]
 
-[node name="Log" type="Label" parent="CanvasLayer"]
-offset_left = 20.0
-offset_top = 846.0
-offset_right = 520.0
-offset_bottom = 916.0
-theme_override_colors/font_color = Color(0.76, 0.78, 0.7, 1)
-theme_override_font_sizes/font_size = 14
-autowrap_mode = 2
+[node name="ProjectileLayer" type="Node2D" parent="World"]
 
-[node name="Help" type="Label" parent="CanvasLayer"]
-offset_left = 268.0
-offset_top = 50.0
-offset_right = 500.0
-offset_bottom = 122.0
-theme_override_colors/font_color = Color(0.6, 0.64, 0.58, 1)
-theme_override_font_sizes/font_size = 11
-text = "Drag joystick: Move\nStop to auto-fire\nR: Restart"
-horizontal_alignment = 2
+[node name="EnemyLayer" type="Node2D" parent="World"]
+
+[node name="PlayerLayer" type="Node2D" parent="World"]
+
+[node name="HUD" parent="." instance=ExtResource("2_hud")]

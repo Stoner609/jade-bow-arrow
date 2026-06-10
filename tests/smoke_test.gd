@@ -22,10 +22,26 @@ func _run() -> void:
 		push_error("Game did not start on the start screen.")
 		quit(1)
 		return
+	if game.hud_view.pause_button.visible:
+		push_error("Pause button should be hidden on the start screen.")
+		quit(1)
+		return
 
-	game._start_run()
+	game.hud_view.start_requested.emit()
 	await process_frame
+	if game.mode != game.Mode.PLAYING:
+		push_error("HUD start signal did not enter playing mode.")
+		quit(1)
+		return
 
+	if game.get_node_or_null("World/PlayerLayer") == null or game.get_node_or_null("World/EnemyLayer") == null:
+		push_error("World scene node layers are missing.")
+		quit(1)
+		return
+	if game.player_layer.get_child_count() <= 0:
+		push_error("Player scene node was not instantiated.")
+		quit(1)
+		return
 	if game.obstacles.is_empty():
 		push_error("Room obstacles were not generated.")
 		quit(1)
@@ -38,6 +54,10 @@ func _run() -> void:
 		push_error("Enemies were not spawned.")
 		quit(1)
 		return
+	if game.enemy_layer.get_child_count() <= 0:
+		push_error("Enemy scene nodes were not instantiated.")
+		quit(1)
+		return
 	if game.total_waves <= 0 or game.wave_index <= 0:
 		push_error("Room wave state was not initialized.")
 		quit(1)
@@ -48,6 +68,21 @@ func _run() -> void:
 
 	if game.arrows.is_empty():
 		push_error("Player did not auto-fire an arrow.")
+		quit(1)
+		return
+	if game.projectile_layer.get_child_count() <= 0:
+		push_error("Projectile scene node was not instantiated.")
+		quit(1)
+		return
+
+	game.hud_view.pause_requested.emit()
+	if game.mode != game.Mode.PAUSED:
+		push_error("HUD pause signal did not enter paused mode.")
+		quit(1)
+		return
+	game.hud_view.resume_requested.emit()
+	if game.mode != game.Mode.PLAYING:
+		push_error("HUD resume signal did not return to playing mode.")
 		quit(1)
 		return
 

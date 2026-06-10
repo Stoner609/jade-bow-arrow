@@ -85,11 +85,15 @@ godot --headless --path . --export-debug iOS ./exports/ios/JadeBowArrow.xcodepro
 
 ## Code Structure
 
+- `scenes/actors/`: instanced player and enemy scene nodes.
+- `scenes/projectiles/`: instanced projectile scene nodes.
+- `scenes/pickups/`: instanced pickup scene nodes.
+- `scenes/ui/`: interactive HUD scene for status text, start, pause, upgrades, death, and win flow.
 - `scripts/core/`: game controller, shared constants, and run-level state.
-- `scripts/actors/`: player and enemy data/behavior helpers.
-- `scripts/projectiles/`: player arrows and enemy shots.
-- `scripts/pickups/`: XP and healing pickup helpers.
+- `scripts/actors/`: player/enemy data helpers and visual node scripts.
+- `scripts/projectiles/`: player/enemy projectile data helpers and projectile node script.
+- `scripts/pickups/`: XP/healing pickup helpers and pickup node script.
 - `scripts/rendering/`: combat drawing helpers for players, enemies, projectiles, gates, and boss UI.
 - `scripts/rooms/`: room layout, gate, and spawn positioning helpers.
-- `scripts/ui/`: HUD, upgrade choices, and touch-control helpers.
+- `scripts/ui/`: HUD scene interactions, HUD text presenter, upgrade choices, and touch-control helpers.
 - `scripts/utils/`: shared collision helpers.
