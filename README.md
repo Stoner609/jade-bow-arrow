@@ -89,6 +89,7 @@ godot --headless --path . --export-debug iOS ./exports/ios/JadeBowArrow.xcodepro
 - `scripts/actors/`: player and enemy data/behavior helpers.
 - `scripts/projectiles/`: player arrows and enemy shots.
 - `scripts/pickups/`: XP and healing pickup helpers.
+- `scripts/rendering/`: combat drawing helpers for players, enemies, projectiles, gates, and boss UI.
 - `scripts/rooms/`: room layout, gate, and spawn positioning helpers.
 - `scripts/ui/`: HUD, upgrade choices, and touch-control helpers.
 - `scripts/utils/`: shared collision helpers.

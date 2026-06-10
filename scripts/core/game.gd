@@ -11,6 +11,7 @@ const HudPresenter := preload("res://scripts/ui/hud_presenter.gd")
 const UpgradeCatalog := preload("res://scripts/ui/upgrade_catalog.gd")
 const TouchControls := preload("res://scripts/ui/touch_controls.gd")
 const CollisionUtils := preload("res://scripts/utils/collision_utils.gd")
+const CombatRenderer := preload("res://scripts/rendering/combat_renderer.gd")
 
 enum Mode { START, PLAYING, UPGRADE, PAUSED, DEAD, WON }
 
@@ -714,24 +715,7 @@ func _draw_arena() -> void:
 func _draw_gate() -> void:
 	if not room_clear:
 		return
-	var gate := _gate_position()
-	var pulse := sin(elapsed * 5.4) * 5.0
-	draw_circle(gate, Constants.GATE_RADIUS + 18.0 + pulse, Color(0.24, 1.0, 0.92, 0.13))
-	draw_circle(gate, Constants.GATE_RADIUS + 7.0 + pulse * 0.6, Color(0.13, 0.92, 1.0, 0.24))
-	draw_circle(gate, 28.0, Color(0.08, 0.42, 1.0))
-	draw_circle(gate, 18.0, Color(0.12, 0.76, 1.0))
-	draw_arc(gate, 42.0, elapsed * 2.0, elapsed * 2.0 + PI * 1.35, 48, Color(0.78, 1.0, 0.96), 5.0)
-	draw_arc(gate, 31.0, -elapsed * 2.4, -elapsed * 2.4 + PI * 1.2, 48, Color(1.0, 0.92, 0.28), 3.0)
-	var arrow := PackedVector2Array([
-		gate + Vector2(0, -17),
-		gate + Vector2(16, 2),
-		gate + Vector2(6, 2),
-		gate + Vector2(6, 18),
-		gate + Vector2(-6, 18),
-		gate + Vector2(-6, 2),
-		gate + Vector2(-16, 2)
-	])
-	draw_colored_polygon(arrow, Color(0.96, 1.0, 0.72, 0.92))
+	CombatRenderer.draw_gate(self, _gate_position(), elapsed, Constants.GATE_RADIUS)
 
 
 # 用途：繪製 XP 與回血拾取物，以及它們的外圈光暈。
@@ -744,142 +728,27 @@ func _draw_pickups() -> void:
 
 # 用途：繪製玩家射出的箭矢與箭頭亮點。
 func _draw_arrows() -> void:
-	for arrow in arrows:
-		var dir: Vector2 = arrow.vel.normalized()
-		draw_line(arrow.pos - dir * 22.0, arrow.pos + dir * 14.0, Color(0.1, 0.08, 0.02, 0.65), 8.0)
-		draw_line(arrow.pos - dir * 22.0, arrow.pos + dir * 14.0, Color(1.0, 0.86, 0.12), 5.0)
-		draw_line(arrow.pos - dir * 28.0, arrow.pos - dir * 10.0, Color(1.0, 0.96, 0.48, 0.28), 9.0)
-		draw_circle(arrow.pos + dir * 15.0, 5.5, Color(1.0, 1.0, 0.78))
+	CombatRenderer.draw_arrows(self, arrows)
 
 
 # 用途：繪製敵人的遠程子彈與光暈。
 func _draw_enemy_shots() -> void:
-	for shot in enemy_shots:
-		draw_circle(shot.pos, 16.0, Color(1.0, 0.18, 0.82, 0.18))
-		draw_circle(shot.pos, 10.0, Color(0.08, 0.02, 0.12, 0.8))
-		draw_circle(shot.pos, 7.0, Color(1.0, 0.16, 0.78))
-		draw_circle(shot.pos + Vector2(-2, -2), 3.0, Color(1.0, 0.76, 1.0))
+	CombatRenderer.draw_enemy_shots(self, enemy_shots)
 
 
 # 用途：繪製敵人外觀、眼睛與生命條。
 func _draw_enemies() -> void:
-	for enemy in enemies:
-		var color: Color = EnemyModel.color_for(enemy.kind)
-		var radius: float = enemy.get("radius", Constants.ENEMY_RADIUS)
-		var body_color := Color(1.0, 0.96, 0.72) if float(enemy.get("hit_flash", 0.0)) > 0.0 else color
-		draw_circle(enemy.pos, radius + 7.0, Color(color.r, color.g, color.b, 0.22))
-		_draw_enemy_body(enemy.kind, enemy.pos, radius, body_color)
-		draw_circle(enemy.pos + Vector2(-radius * 0.32, -radius * 0.25), 3.4, Color(0.03, 0.03, 0.03))
-		draw_circle(enemy.pos + Vector2(radius * 0.32, -radius * 0.25), 3.4, Color(0.03, 0.03, 0.03))
-		var bar_width := 72.0 if enemy.kind == "boss" else 48.0
-		var bar := Rect2(enemy.pos + Vector2(-bar_width * 0.5, -radius - 16), Vector2(bar_width, 6))
-		draw_rect(bar, Color(0.12, 0.12, 0.12))
-		draw_rect(Rect2(bar.position, Vector2(bar.size.x * max(0.0, float(enemy.hp) / float(enemy.max_hp)), bar.size.y)), Color(0.26, 1.0, 0.2))
-
-
-# 用途：依敵人種類繪製不同輪廓，提升手機小畫面上的辨識度。
-func _draw_enemy_body(kind: String, pos: Vector2, radius: float, color: Color) -> void:
-	var outline := Color(0.06, 0.04, 0.04, 0.82)
-	if kind == "runner":
-		var points := PackedVector2Array([
-			pos + Vector2(0, -radius - 4.0),
-			pos + Vector2(radius + 5.0, 0),
-			pos + Vector2(0, radius + 4.0),
-			pos + Vector2(-radius - 5.0, 0)
-		])
-		draw_colored_polygon(_scaled_polygon(points, pos, 1.12), outline)
-		draw_colored_polygon(points, color)
-		draw_line(pos + Vector2(-radius * 0.55, radius * 0.35), pos + Vector2(radius * 0.55, radius * 0.35), Color(1.0, 0.78, 0.28), 3.0)
-	elif kind == "spitter":
-		draw_colored_polygon(_regular_polygon_points(pos, radius + 4.0, 6, PI / 6.0), outline)
-		draw_colored_polygon(_regular_polygon_points(pos, radius, 6, PI / 6.0), color)
-		draw_circle(pos + Vector2(0, radius * 0.2), radius * 0.28, Color(0.1, 0.02, 0.16))
-	elif kind == "brute":
-		var outer := Rect2(pos - Vector2(radius + 5.0, radius + 5.0), Vector2(radius * 2.0 + 10.0, radius * 2.0 + 10.0))
-		var inner := Rect2(pos - Vector2(radius, radius), Vector2(radius * 2.0, radius * 2.0))
-		draw_rect(outer, outline)
-		draw_rect(inner, color)
-		draw_line(inner.position + Vector2(5, inner.size.y - 7), inner.end - Vector2(5, 7), Color(0.64, 1.0, 0.48), 3.0)
-	elif kind == "boss":
-		draw_colored_polygon(_regular_polygon_points(pos, radius + 6.0, 8, PI / 8.0), outline)
-		draw_colored_polygon(_regular_polygon_points(pos, radius, 8, PI / 8.0), color)
-		draw_arc(pos, radius + 11.0, elapsed * 1.6, elapsed * 1.6 + PI * 1.4, 48, Color(1.0, 0.28, 0.24, 0.8), 4.0)
-		draw_line(pos + Vector2(-radius * 0.55, radius * 0.32), pos + Vector2(radius * 0.55, radius * 0.32), Color(0.06, 0.01, 0.02), 4.0)
-	else:
-		draw_circle(pos, radius + 4.0, outline)
-		draw_circle(pos, radius, color)
-		draw_arc(pos, radius * 0.7, 0.15, PI - 0.15, 24, Color(1.0, 0.62, 0.36), 3.0)
+	CombatRenderer.draw_enemies(self, enemies, elapsed, Constants.ENEMY_RADIUS)
 
 
 # 用途：繪製 Boss 專用大血條，讓玩家不用只看場上的小血條。
 func _draw_boss_health() -> void:
-	var boss := _boss_enemy()
-	if boss.is_empty():
-		return
-	var ratio: float = clampf(float(boss.hp) / float(boss.max_hp), 0.0, 1.0)
-	var bar := Rect2(Vector2(74, 104), Vector2(392, 16))
-	draw_rect(bar.grow(5.0), Color(0.03, 0.02, 0.02, 0.78))
-	draw_rect(bar, Color(0.16, 0.05, 0.06))
-	draw_rect(Rect2(bar.position, Vector2(bar.size.x * ratio, bar.size.y)), Color(0.92, 0.12, 0.14))
-	draw_rect(bar, Color(1.0, 0.78, 0.36, 0.9), false, 2.0)
-	draw_string(ThemeDB.fallback_font, Vector2(76, 98), "BOSS", HORIZONTAL_ALIGNMENT_LEFT, -1, 16, Color(1.0, 0.86, 0.48))
-
-
-# 用途：取得目前場上的 Boss 資料，沒有 Boss 時回傳空字典。
-func _boss_enemy() -> Dictionary:
-	for enemy in enemies:
-		if enemy.kind == "boss":
-			return enemy
-	return {}
-
-
-# 用途：取得玩家視覺朝向，優先朝最近敵人，其次使用搖桿方向。
-func _player_facing_direction() -> Vector2:
-	var target := _nearest_enemy()
-	if target != -1:
-		return (enemies[target].pos - player.pos).normalized()
-	if touch_axis.length() > 0.05:
-		return touch_axis.normalized()
-	return Vector2(0, -1)
-
-
-# 用途：建立以中心點為基準的正多邊形點位。
-func _regular_polygon_points(center: Vector2, radius: float, sides: int, rotation: float) -> PackedVector2Array:
-	var points := PackedVector2Array()
-	for i in sides:
-		var angle := rotation + TAU * float(i) / float(sides)
-		points.append(center + Vector2(cos(angle), sin(angle)) * radius)
-	return points
-
-
-# 用途：將多邊形點位從中心等比例放大，常用於繪製外框。
-func _scaled_polygon(points: PackedVector2Array, center: Vector2, scale: float) -> PackedVector2Array:
-	var scaled := PackedVector2Array()
-	for point in points:
-		scaled.append(center + (point - center) * scale)
-	return scaled
+	CombatRenderer.draw_boss_health(self, enemies)
 
 
 # 用途：繪製玩家角色、武器線條與受傷閃爍效果。
 func _draw_player() -> void:
-	var flash_alpha: float = min(1.0, damage_flash / 0.18)
-	var body_color: Color = Color(1.0, 0.92, 0.9) if damage_flash > 0.0 else Color(0.18, 0.42, 0.92)
-	var facing: Vector2 = _player_facing_direction()
-	var side: Vector2 = facing.orthogonal()
-	draw_circle(player.pos, Constants.PLAYER_RADIUS + 9.0 + flash_alpha * 8.0, Color(1.0, 0.12, 0.08, 0.18 * flash_alpha))
-	draw_circle(player.pos, Constants.PLAYER_RADIUS + 7.0, Color(0.2, 0.8, 1.0, 0.24))
-	draw_circle(player.pos, Constants.PLAYER_RADIUS + 2.0, Color(0.8, 0.96, 1.0))
-	draw_circle(player.pos, Constants.PLAYER_RADIUS, body_color)
-	draw_circle(player.pos + facing * 14.0 + side * 4.0, 7.0, Color(0.96, 0.82, 0.58))
-	draw_line(player.pos - side * 12.0 + facing * 2.0, player.pos + side * 12.0 + facing * 2.0, Color(0.92, 0.82, 0.28), 4.0)
-	var marker := PackedVector2Array([
-		player.pos + facing * 28.0,
-		player.pos + facing * 14.0 + side * 8.0,
-		player.pos + facing * 14.0 - side * 8.0
-	])
-	draw_colored_polygon(marker, Color(1.0, 0.88, 0.18))
-	if damage_flash > 0.0:
-		draw_arc(player.pos, Constants.PLAYER_RADIUS + 17.0, 0.0, TAU, 48, Color(1.0, 0.16, 0.08, 0.9 * flash_alpha), 4.0)
+	CombatRenderer.draw_player(self, player, enemies, touch_axis, damage_flash, Constants.PLAYER_RADIUS)
 
 
 # 用途：繪製手機直式版左下角虛擬搖桿。
