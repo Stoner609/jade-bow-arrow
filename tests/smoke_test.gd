@@ -38,6 +38,15 @@ func _run() -> void:
 		push_error("World scene node layers are missing.")
 		quit(1)
 		return
+	var late_wave: Array[String] = game.RoomManager.enemy_wave(7, 2, game.Constants.MAX_ROOMS)
+	if late_wave.count("crawler") != 12 or late_wave.count("spitter") != 2 or late_wave.count("runner") != 2 or late_wave.count("brute") != 1:
+		push_error("Room wave table did not return the expected late-game composition.")
+		quit(1)
+		return
+	if game.RoomManager.wave_count(game.Constants.MAX_ROOMS, game.Constants.MAX_ROOMS) != 1:
+		push_error("Boss room wave count should be data-driven as one wave.")
+		quit(1)
+		return
 	if game.player_layer.get_child_count() <= 0:
 		push_error("Player scene node was not instantiated.")
 		quit(1)
@@ -129,6 +138,15 @@ func _run() -> void:
 	game._update_enemies(0.1)
 	if chase_enemy.pos.x <= boss_far_x:
 		push_error("Boss scene node did not approach when too far.")
+		quit(1)
+		return
+	chase_enemy.pos = Vector2(260, 480)
+	chase_enemy.shoot_cd = 0.0
+	game.player.pos = Vector2(430, 480)
+	var boss_shot_count_before: int = game.enemy_shots.size()
+	game._update_enemies(0.1)
+	if game.enemy_shots.size() < boss_shot_count_before + game.Constants.BOSS_SPREAD_COUNT:
+		push_error("Boss scene node did not request a spread shot.")
 		quit(1)
 		return
 	var enemy_count_before: int = game.enemies.size()

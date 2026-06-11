@@ -160,6 +160,7 @@ func _create_enemy_node(enemy: Dictionary) -> Node2D:
 	node.damaged.connect(_on_enemy_damaged)
 	node.died.connect(_on_enemy_died)
 	node.shot_requested.connect(_on_enemy_shot_requested)
+	node.spread_shot_requested.connect(_on_enemy_spread_shot_requested)
 	return node
 
 
@@ -189,7 +190,16 @@ func _on_enemy_shot_requested(enemy: Dictionary, direction: Vector2) -> void:
 		return
 	_fire_enemy_shot(enemy.pos, direction)
 	if enemy.has("node") and is_instance_valid(enemy.node):
-		enemy.node.set_shoot_cooldown(rng.randf_range(1.25, 1.9))
+		enemy.node.set_shoot_cooldown(rng.randf_range(Constants.SPITTER_SHOOT_COOLDOWN_MIN, Constants.SPITTER_SHOOT_COOLDOWN_MAX))
+
+
+# 用途：接收 Boss 節點的散射請求，建立多顆敵方投射物並重設冷卻。
+func _on_enemy_spread_shot_requested(enemy: Dictionary, direction: Vector2, count: int, spread: float) -> void:
+	if not enemies.has(enemy):
+		return
+	_fire_enemy_spread(enemy.pos, direction, count, spread)
+	if enemy.has("node") and is_instance_valid(enemy.node):
+		enemy.node.set_shoot_cooldown(rng.randf_range(Constants.BOSS_SHOOT_COOLDOWN_MIN, Constants.BOSS_SHOOT_COOLDOWN_MAX))
 
 
 # 用途：建立玩家或敵方投射物的場景節點。
@@ -483,34 +493,35 @@ func _update_enemies(delta: float) -> void:
 	for i in range(enemies.size() - 1, -1, -1):
 		var enemy: Dictionary = enemies[i]
 		enemy.hit_cd = max(0.0, float(enemy.hit_cd) - delta)
-		if enemy.kind != "spitter":
+		var has_enemy_node: bool = enemy.has("node") and is_instance_valid(enemy.node)
+		if enemy.kind != "spitter" and not (enemy.kind == "boss" and has_enemy_node):
 			enemy.shoot_cd = max(0.0, float(enemy.shoot_cd) - delta)
 
 		var to_player: Vector2 = player.pos - enemy.pos
 		var distance: float = to_player.length()
-		if enemy.kind == "boss" and distance < 620.0:
+		if enemy.kind == "boss" and distance < Constants.BOSS_ACTIVE_RANGE:
 			var shot_direction := to_player.normalized()
-			if enemy.has("node") and is_instance_valid(enemy.node):
+			if has_enemy_node:
 				shot_direction = enemy.node.update_boss_position(player.pos, delta)
 			else:
-				if distance < 300.0:
-					enemy.pos -= shot_direction * float(enemy.speed) * 0.35 * delta
-				elif distance > 420.0:
+				if distance < Constants.BOSS_RETREAT_DISTANCE:
+					enemy.pos -= shot_direction * float(enemy.speed) * Constants.BOSS_RETREAT_SPEED_SCALE * delta
+				elif distance > Constants.BOSS_APPROACH_DISTANCE:
 					enemy.pos += shot_direction * float(enemy.speed) * delta
-			if enemy.shoot_cd <= 0.0:
-				_fire_enemy_spread(enemy.pos, shot_direction, 3, 0.28)
-				enemy.shoot_cd = rng.randf_range(1.15, 1.55)
+			if not has_enemy_node and enemy.shoot_cd <= 0.0:
+				_fire_enemy_spread(enemy.pos, shot_direction, Constants.BOSS_SPREAD_COUNT, Constants.BOSS_SPREAD_ANGLE)
+				enemy.shoot_cd = rng.randf_range(Constants.BOSS_SHOOT_COOLDOWN_MIN, Constants.BOSS_SHOOT_COOLDOWN_MAX)
 		elif enemy.kind == "spitter":
-			if enemy.has("node") and is_instance_valid(enemy.node):
+			if has_enemy_node:
 				enemy.node.update_spitter(player.pos, delta)
-			elif distance < 520.0:
-				if distance < 220.0:
-					enemy.pos -= to_player.normalized() * float(enemy.speed) * 0.7 * delta
+			elif distance < Constants.SPITTER_ACTIVE_RANGE:
+				if distance < Constants.SPITTER_RETREAT_DISTANCE:
+					enemy.pos -= to_player.normalized() * float(enemy.speed) * Constants.SPITTER_RETREAT_SPEED_SCALE * delta
 				if enemy.shoot_cd <= 0.0:
 					_fire_enemy_shot(enemy.pos, to_player.normalized())
-					enemy.shoot_cd = rng.randf_range(1.25, 1.9)
+					enemy.shoot_cd = rng.randf_range(Constants.SPITTER_SHOOT_COOLDOWN_MIN, Constants.SPITTER_SHOOT_COOLDOWN_MAX)
 		else:
-			if enemy.has("node") and is_instance_valid(enemy.node):
+			if has_enemy_node:
 				enemy.node.chase_player(player.pos, delta)
 			else:
 				enemy.pos += to_player.normalized() * float(enemy.speed) * delta

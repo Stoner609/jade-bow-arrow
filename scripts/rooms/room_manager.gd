@@ -1,5 +1,17 @@
 extends RefCounted
 
+const ROOM_WAVES := {
+	1: [{"crawler": 5}],
+	2: [{"crawler": 6, "spitter": 1}],
+	3: [{"crawler": 7, "spitter": 1}, {"crawler": 8, "spitter": 1}],
+	4: [{"crawler": 8, "spitter": 1, "runner": 1}, {"crawler": 9, "spitter": 1, "runner": 1}],
+	5: [{"crawler": 9, "spitter": 1, "runner": 1}, {"crawler": 10, "spitter": 1, "runner": 1, "brute": 1}],
+	6: [{"crawler": 10, "spitter": 1, "runner": 1}, {"crawler": 11, "spitter": 1, "runner": 1, "brute": 1}, {"crawler": 12, "spitter": 1, "runner": 1, "brute": 1}],
+	7: [{"crawler": 11, "spitter": 2, "runner": 2}, {"crawler": 12, "spitter": 2, "runner": 2, "brute": 1}, {"crawler": 13, "spitter": 2, "runner": 2, "brute": 1}],
+	8: [{"boss": 1}]
+}
+
+
 static func obstacle_layout(room_index: int, arena: Rect2) -> Array[Rect2]:
 	var obstacles: Array[Rect2] = []
 	if room_index % 3 == 1:
@@ -24,32 +36,17 @@ static func gate_position(arena: Rect2) -> Vector2:
 
 
 static func wave_count(room_index: int, max_rooms: int) -> int:
-	if room_index >= max_rooms:
-		return 1
-	if room_index <= 2:
-		return 1
-	if room_index <= 5:
-		return 2
-	return 3
+	var room_waves: Array = ROOM_WAVES.get(min(room_index, max_rooms), [])
+	return max(1, room_waves.size())
 
 
 static func enemy_wave(room_index: int, wave_index: int, max_rooms: int) -> Array[String]:
-	if room_index >= max_rooms:
-		return ["boss"]
-
 	var enemies: Array[String] = []
-	var crawler_count: int = 3 + room_index + wave_index
-	for i in crawler_count:
-		enemies.append("crawler")
-
-	if room_index >= 2:
-		enemies.append("spitter")
-	if room_index >= 4:
-		enemies.append("runner")
-	if room_index >= 5 and wave_index >= 2:
-		enemies.append("brute")
-	if room_index >= 7:
-		enemies.append("spitter")
-		enemies.append("runner")
-
+	var room_waves: Array = ROOM_WAVES.get(min(room_index, max_rooms), [])
+	if room_waves.is_empty():
+		return enemies
+	var wave: Dictionary = room_waves[clamp(wave_index - 1, 0, room_waves.size() - 1)]
+	for kind in wave.keys():
+		for i in int(wave[kind]):
+			enemies.append(kind)
 	return enemies

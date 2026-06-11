@@ -6,6 +6,7 @@ const CombatRenderer := preload("res://scripts/rendering/combat_renderer.gd")
 signal damaged(enemy: Dictionary, damage: int)
 signal died(enemy: Dictionary)
 signal shot_requested(enemy: Dictionary, direction: Vector2)
+signal spread_shot_requested(enemy: Dictionary, direction: Vector2, count: int, spread: float)
 
 var enemy_data: Dictionary = {}
 var elapsed := 0.0
@@ -61,31 +62,34 @@ func update_spitter(player_position: Vector2, delta: float) -> void:
 	if to_player.is_zero_approx():
 		return
 	var distance: float = to_player.length()
-	if distance >= 520.0:
+	if distance >= Constants.SPITTER_ACTIVE_RANGE:
 		return
 	var direction := to_player.normalized()
-	if distance < 220.0:
-		enemy_data.pos -= direction * float(enemy_data.speed) * 0.7 * delta
+	if distance < Constants.SPITTER_RETREAT_DISTANCE:
+		enemy_data.pos -= direction * float(enemy_data.speed) * Constants.SPITTER_RETREAT_SPEED_SCALE * delta
 	if enemy_data.shoot_cd <= 0.0:
 		shot_requested.emit(enemy_data, direction)
 	queue_redraw()
 
 
-# 用途：更新 Boss 與玩家之間的距離控制。
+# 用途：更新 Boss 與玩家之間的距離控制與散射節奏。
 func update_boss_position(player_position: Vector2, delta: float) -> Vector2:
 	if not active or enemy_data.is_empty():
 		return Vector2.ZERO
+	enemy_data.shoot_cd = max(0.0, float(enemy_data.shoot_cd) - delta)
 	var to_player: Vector2 = player_position - enemy_data.pos
 	if to_player.is_zero_approx():
 		return Vector2.ZERO
 	var distance: float = to_player.length()
-	if distance >= 620.0:
+	if distance >= Constants.BOSS_ACTIVE_RANGE:
 		return to_player.normalized()
 	var direction := to_player.normalized()
-	if distance < 300.0:
-		enemy_data.pos -= direction * float(enemy_data.speed) * 0.35 * delta
-	elif distance > 420.0:
+	if distance < Constants.BOSS_RETREAT_DISTANCE:
+		enemy_data.pos -= direction * float(enemy_data.speed) * Constants.BOSS_RETREAT_SPEED_SCALE * delta
+	elif distance > Constants.BOSS_APPROACH_DISTANCE:
 		enemy_data.pos += direction * float(enemy_data.speed) * delta
+	if enemy_data.shoot_cd <= 0.0:
+		spread_shot_requested.emit(enemy_data, direction, Constants.BOSS_SPREAD_COUNT, Constants.BOSS_SPREAD_ANGLE)
 	queue_redraw()
 	return direction
 
