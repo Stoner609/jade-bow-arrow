@@ -27,20 +27,3 @@ static func reset(player: Dictionary, start_position: Vector2) -> void:
 	player.arrows = 1
 	player.pierce = 0
 	player.ricochet = false
-
-
-static func apply_upgrade(player: Dictionary, stat: String) -> void:
-	match stat:
-		"power":
-			player.power += 4
-		"speed":
-			player.fire_rate = max(0.25, float(player.fire_rate) - 0.06)
-		"hp":
-			player.max_hp += 18
-			player.hp = min(int(player.max_hp), int(player.hp) + 18)
-		"arrows":
-			player.arrows = min(4, int(player.arrows) + 1)
-		"pierce":
-			player.pierce = min(3, int(player.pierce) + 1)
-		"ricochet":
-			player.ricochet = true
