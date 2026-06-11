@@ -113,6 +113,24 @@ func _run() -> void:
 		push_error("Spitter scene node did not request an enemy shot.")
 		quit(1)
 		return
+	chase_enemy.kind = "boss"
+	chase_enemy.pos = Vector2(260, 480)
+	chase_enemy.shoot_cd = 10.0
+	game.player.pos = Vector2(430, 480)
+	var boss_close_x: float = chase_enemy.pos.x
+	game._update_enemies(0.1)
+	if chase_enemy.pos.x >= boss_close_x:
+		push_error("Boss scene node did not retreat when too close.")
+		quit(1)
+		return
+	chase_enemy.pos = Vector2(40, 480)
+	game.player.pos = Vector2(460, 480)
+	var boss_far_x: float = chase_enemy.pos.x
+	game._update_enemies(0.1)
+	if chase_enemy.pos.x <= boss_far_x:
+		push_error("Boss scene node did not approach when too far.")
+		quit(1)
+		return
 	var enemy_count_before: int = game.enemies.size()
 	var pickup_count_before: int = game.pickups.size()
 	game._damage_enemy(0, int(game.enemies[0].max_hp) + 1, Vector2.RIGHT)

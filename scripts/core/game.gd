@@ -489,12 +489,16 @@ func _update_enemies(delta: float) -> void:
 		var to_player: Vector2 = player.pos - enemy.pos
 		var distance: float = to_player.length()
 		if enemy.kind == "boss" and distance < 620.0:
-			if distance < 300.0:
-				enemy.pos -= to_player.normalized() * float(enemy.speed) * 0.35 * delta
-			elif distance > 420.0:
-				enemy.pos += to_player.normalized() * float(enemy.speed) * delta
+			var shot_direction := to_player.normalized()
+			if enemy.has("node") and is_instance_valid(enemy.node):
+				shot_direction = enemy.node.update_boss_position(player.pos, delta)
+			else:
+				if distance < 300.0:
+					enemy.pos -= shot_direction * float(enemy.speed) * 0.35 * delta
+				elif distance > 420.0:
+					enemy.pos += shot_direction * float(enemy.speed) * delta
 			if enemy.shoot_cd <= 0.0:
-				_fire_enemy_spread(enemy.pos, to_player.normalized(), 3, 0.28)
+				_fire_enemy_spread(enemy.pos, shot_direction, 3, 0.28)
 				enemy.shoot_cd = rng.randf_range(1.15, 1.55)
 		elif enemy.kind == "spitter":
 			if enemy.has("node") and is_instance_valid(enemy.node):

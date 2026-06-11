@@ -71,6 +71,25 @@ func update_spitter(player_position: Vector2, delta: float) -> void:
 	queue_redraw()
 
 
+# 用途：更新 Boss 與玩家之間的距離控制。
+func update_boss_position(player_position: Vector2, delta: float) -> Vector2:
+	if not active or enemy_data.is_empty():
+		return Vector2.ZERO
+	var to_player: Vector2 = player_position - enemy_data.pos
+	if to_player.is_zero_approx():
+		return Vector2.ZERO
+	var distance: float = to_player.length()
+	if distance >= 620.0:
+		return to_player.normalized()
+	var direction := to_player.normalized()
+	if distance < 300.0:
+		enemy_data.pos -= direction * float(enemy_data.speed) * 0.35 * delta
+	elif distance > 420.0:
+		enemy_data.pos += direction * float(enemy_data.speed) * delta
+	queue_redraw()
+	return direction
+
+
 # 用途：設定遠程敵人下一次射擊前的等待時間。
 func set_shoot_cooldown(cooldown: float) -> void:
 	if enemy_data.is_empty():
