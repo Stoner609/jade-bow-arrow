@@ -5,6 +5,7 @@ const CombatRenderer := preload("res://scripts/rendering/combat_renderer.gd")
 
 signal damaged(enemy: Dictionary, damage: int)
 signal died(enemy: Dictionary)
+signal shot_requested(enemy: Dictionary, direction: Vector2)
 
 var enemy_data: Dictionary = {}
 var elapsed := 0.0
@@ -38,6 +39,43 @@ func apply_damage(damage: int, direction: Vector2) -> void:
 	if enemy_data.hp <= 0:
 		active = false
 		died.emit(enemy_data)
+
+
+# 用途：讓一般追擊型敵人朝玩家位置移動。
+func chase_player(player_position: Vector2, delta: float) -> void:
+	if not active or enemy_data.is_empty():
+		return
+	var to_player: Vector2 = player_position - enemy_data.pos
+	if to_player.is_zero_approx():
+		return
+	enemy_data.pos += to_player.normalized() * float(enemy_data.speed) * delta
+	queue_redraw()
+
+
+# 用途：更新遠程敵人的距離控制與射擊節奏。
+func update_spitter(player_position: Vector2, delta: float) -> void:
+	if not active or enemy_data.is_empty():
+		return
+	enemy_data.shoot_cd = max(0.0, float(enemy_data.shoot_cd) - delta)
+	var to_player: Vector2 = player_position - enemy_data.pos
+	if to_player.is_zero_approx():
+		return
+	var distance: float = to_player.length()
+	if distance >= 520.0:
+		return
+	var direction := to_player.normalized()
+	if distance < 220.0:
+		enemy_data.pos -= direction * float(enemy_data.speed) * 0.7 * delta
+	if enemy_data.shoot_cd <= 0.0:
+		shot_requested.emit(enemy_data, direction)
+	queue_redraw()
+
+
+# 用途：設定遠程敵人下一次射擊前的等待時間。
+func set_shoot_cooldown(cooldown: float) -> void:
+	if enemy_data.is_empty():
+		return
+	enemy_data.shoot_cd = cooldown
 
 
 # 用途：繪製敵人目前外觀。

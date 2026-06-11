@@ -88,6 +88,31 @@ func _run() -> void:
 		push_error("Pickup scene node did not collect XP.")
 		quit(1)
 		return
+	var chase_enemy: Dictionary = game.enemies[0]
+	chase_enemy.kind = "crawler"
+	chase_enemy.pos = Vector2(260, 480)
+	game.player.pos = Vector2(340, 480)
+	var chase_start_x: float = chase_enemy.pos.x
+	game._update_enemies(0.1)
+	if chase_enemy.pos.x <= chase_start_x:
+		push_error("Enemy scene node did not chase the player.")
+		quit(1)
+		return
+	chase_enemy.kind = "spitter"
+	chase_enemy.pos = Vector2(260, 480)
+	chase_enemy.shoot_cd = 0.0
+	game.player.pos = Vector2(430, 480)
+	var spitter_start_x: float = chase_enemy.pos.x
+	var shot_count_before: int = game.enemy_shots.size()
+	game._update_enemies(0.1)
+	if chase_enemy.pos.x >= spitter_start_x:
+		push_error("Spitter scene node did not keep distance from the player.")
+		quit(1)
+		return
+	if game.enemy_shots.size() <= shot_count_before:
+		push_error("Spitter scene node did not request an enemy shot.")
+		quit(1)
+		return
 	var enemy_count_before: int = game.enemies.size()
 	var pickup_count_before: int = game.pickups.size()
 	game._damage_enemy(0, int(game.enemies[0].max_hp) + 1, Vector2.RIGHT)

@@ -159,6 +159,7 @@ func _create_enemy_node(enemy: Dictionary) -> Node2D:
 	node.sync_from_model(enemy, elapsed)
 	node.damaged.connect(_on_enemy_damaged)
 	node.died.connect(_on_enemy_died)
+	node.shot_requested.connect(_on_enemy_shot_requested)
 	return node
 
 
@@ -180,6 +181,15 @@ func _on_enemy_died(enemy: Dictionary) -> void:
 		_spawn_pickup(PickupModel.heart(drop_pos + Vector2(20, 12), 28))
 	elif rng.randf() < 0.16:
 		_spawn_pickup(PickupModel.heart(drop_pos + Vector2(rng.randf_range(-18, 18), rng.randf_range(-18, 18)), 12))
+
+
+# 用途：接收敵人節點的射擊請求，建立敵方投射物並重設冷卻。
+func _on_enemy_shot_requested(enemy: Dictionary, direction: Vector2) -> void:
+	if not enemies.has(enemy):
+		return
+	_fire_enemy_shot(enemy.pos, direction)
+	if enemy.has("node") and is_instance_valid(enemy.node):
+		enemy.node.set_shoot_cooldown(rng.randf_range(1.25, 1.9))
 
 
 # 用途：建立玩家或敵方投射物的場景節點。
@@ -473,7 +483,8 @@ func _update_enemies(delta: float) -> void:
 	for i in range(enemies.size() - 1, -1, -1):
 		var enemy: Dictionary = enemies[i]
 		enemy.hit_cd = max(0.0, float(enemy.hit_cd) - delta)
-		enemy.shoot_cd = max(0.0, float(enemy.shoot_cd) - delta)
+		if enemy.kind != "spitter":
+			enemy.shoot_cd = max(0.0, float(enemy.shoot_cd) - delta)
 
 		var to_player: Vector2 = player.pos - enemy.pos
 		var distance: float = to_player.length()
@@ -485,14 +496,20 @@ func _update_enemies(delta: float) -> void:
 			if enemy.shoot_cd <= 0.0:
 				_fire_enemy_spread(enemy.pos, to_player.normalized(), 3, 0.28)
 				enemy.shoot_cd = rng.randf_range(1.15, 1.55)
-		elif enemy.kind == "spitter" and distance < 520.0:
-			if distance < 220.0:
-				enemy.pos -= to_player.normalized() * float(enemy.speed) * 0.7 * delta
-			if enemy.shoot_cd <= 0.0:
-				_fire_enemy_shot(enemy.pos, to_player.normalized())
-				enemy.shoot_cd = rng.randf_range(1.25, 1.9)
+		elif enemy.kind == "spitter":
+			if enemy.has("node") and is_instance_valid(enemy.node):
+				enemy.node.update_spitter(player.pos, delta)
+			elif distance < 520.0:
+				if distance < 220.0:
+					enemy.pos -= to_player.normalized() * float(enemy.speed) * 0.7 * delta
+				if enemy.shoot_cd <= 0.0:
+					_fire_enemy_shot(enemy.pos, to_player.normalized())
+					enemy.shoot_cd = rng.randf_range(1.25, 1.9)
 		else:
-			enemy.pos += to_player.normalized() * float(enemy.speed) * delta
+			if enemy.has("node") and is_instance_valid(enemy.node):
+				enemy.node.chase_player(player.pos, delta)
+			else:
+				enemy.pos += to_player.normalized() * float(enemy.speed) * delta
 
 		var radius: float = enemy.get("radius", Constants.ENEMY_RADIUS)
 		enemy.pos = _clamp_to_arena(enemy.pos, radius)
