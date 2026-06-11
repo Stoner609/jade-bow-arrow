@@ -1,16 +1,16 @@
 extends RefCounted
 
 const UPGRADES := [
-	{"id": "power_shot", "name": "Power Shot", "desc": "+4 damage", "effect": {"stat": "power", "op": "add", "value": 4}, "weight": 24},
-	{"id": "quick_draw", "name": "Quick Draw", "desc": "faster auto-fire", "effect": {"stat": "fire_rate", "op": "add", "value": -0.06, "min": 0.25}, "weight": 20},
-	{"id": "vitality", "name": "Vitality", "desc": "+18 max HP", "effect": {"stat": "max_hp", "op": "add_with_heal", "value": 18}, "weight": 22},
-	{"id": "swift_steps", "name": "Swift Steps", "desc": "+28 move speed", "effect": {"stat": "speed", "op": "add", "value": 28, "max": 390}, "weight": 18},
-	{"id": "blood_arrow", "name": "Blood Arrow", "desc": "heal 6% arrow damage", "effect": {"stat": "lifesteal", "op": "add", "value": 0.06, "max": 0.18}, "weight": 10},
-	{"id": "critical_eye", "name": "Critical Eye", "desc": "+10% crit chance", "effect": {"stat": "crit_chance", "op": "add", "value": 0.10, "max": 0.40}, "weight": 12},
-	{"id": "giant_slayer", "name": "Giant Slayer", "desc": "+18% boss damage", "effect": {"stat": "boss_damage_bonus", "op": "add", "value": 0.18, "max": 0.54}, "weight": 9},
-	{"id": "twin_arrow", "name": "Twin Arrow", "desc": "+1 arrow", "effect": {"stat": "arrows", "op": "add", "value": 1, "max": 4}, "weight": 14, "requires": {"stat": "arrows", "op": "lt", "value": 4}},
-	{"id": "piercing", "name": "Piercing", "desc": "arrows pass through 1 enemy", "effect": {"stat": "pierce", "op": "add", "value": 1, "max": 3}, "weight": 12, "requires": {"stat": "pierce", "op": "lt", "value": 3}},
-	{"id": "ricochet", "name": "Ricochet", "desc": "first hit bounces", "effect": {"stat": "ricochet", "op": "set", "value": true}, "weight": 8, "requires": {"stat": "ricochet", "op": "is_false"}}
+	{"id": "power_shot", "name": "Power Shot", "desc": "+4 damage", "effect": {"stat": "power", "op": "add", "value": 4}, "weight": 22},
+	{"id": "quick_draw", "name": "Quick Draw", "desc": "faster auto-fire", "effect": {"stat": "fire_rate", "op": "add", "value": -0.05, "min": 0.28}, "weight": 18},
+	{"id": "vitality", "name": "Vitality", "desc": "+18 max HP", "effect": {"stat": "max_hp", "op": "add_with_heal", "value": 18}, "weight": 20},
+	{"id": "swift_steps", "name": "Swift Steps", "desc": "+22 move speed", "effect": {"stat": "speed", "op": "add", "value": 22, "max": 360}, "weight": 14},
+	{"id": "blood_arrow", "name": "Blood Arrow", "desc": "heal 4% arrow damage", "effect": {"stat": "lifesteal", "op": "add", "value": 0.04, "max": 0.12}, "weight": 8},
+	{"id": "critical_eye", "name": "Critical Eye", "desc": "+8% crit chance", "effect": {"stat": "crit_chance", "op": "add", "value": 0.08, "max": 0.32}, "weight": 10},
+	{"id": "giant_slayer", "name": "Giant Slayer", "desc": "+12% boss damage", "effect": {"stat": "boss_damage_bonus", "op": "add", "value": 0.12, "max": 0.36}, "weight": 7},
+	{"id": "twin_arrow", "name": "Twin Arrow", "desc": "+1 arrow", "effect": {"stat": "arrows", "op": "add", "value": 1, "max": 4}, "weight": 12, "requires": {"stat": "arrows", "op": "lt", "value": 4}},
+	{"id": "piercing", "name": "Piercing", "desc": "arrows pass through 1 enemy", "effect": {"stat": "pierce", "op": "add", "value": 1, "max": 3}, "weight": 10, "requires": {"stat": "pierce", "op": "lt", "value": 3}},
+	{"id": "ricochet", "name": "Ricochet", "desc": "first hit bounces", "effect": {"stat": "ricochet", "op": "set", "value": true}, "weight": 7, "requires": {"stat": "ricochet", "op": "is_false"}}
 ]
 
 

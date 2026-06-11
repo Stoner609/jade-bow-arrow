@@ -33,6 +33,10 @@ func _run() -> void:
 		push_error("HUD start signal did not enter playing mode.")
 		quit(1)
 		return
+	if game.room_index != game.Constants.DEBUG_START_ROOM:
+		push_error("Run did not start from the configured debug room.")
+		quit(1)
+		return
 
 	if game.get_node_or_null("World/PlayerLayer") == null or game.get_node_or_null("World/EnemyLayer") == null:
 		push_error("World scene node layers are missing.")
@@ -69,6 +73,11 @@ func _run() -> void:
 	game.UpgradeCatalog.apply_upgrade(upgrade_test_player, power_upgrade)
 	if int(upgrade_test_player.power) != 17:
 		push_error("Upgrade catalog did not apply a stat effect.")
+		quit(1)
+		return
+	var blood_arrow: Dictionary = game.UpgradeCatalog.UPGRADES.filter(func(upgrade: Dictionary) -> bool: return upgrade.id == "blood_arrow")[0]
+	if float(blood_arrow.effect.value) > 0.04 or float(blood_arrow.effect.max) > 0.12:
+		push_error("Blood Arrow balance values are higher than expected.")
 		quit(1)
 		return
 	upgrade_test_player.arrows = 4
@@ -196,6 +205,10 @@ func _run() -> void:
 		push_error("Lifesteal did not heal the player after damage.")
 		quit(1)
 		return
+	if game.floating_texts.is_empty() or int(game.floating_texts.back().get("size", 0)) < 26:
+		push_error("Lifesteal did not create the larger green heal text.")
+		quit(1)
+		return
 	chase_enemy.kind = "boss"
 	chase_enemy.hp = 100
 	game.player.boss_damage_bonus = 0.5
@@ -209,6 +222,20 @@ func _run() -> void:
 	game._fire_at_nearest_enemy()
 	if game.arrows.is_empty() or int(game.arrows.back().damage) != int(game.player.power) * 2:
 		push_error("Critical upgrade did not affect arrow damage.")
+		quit(1)
+		return
+	chase_enemy.kind = "crawler"
+	chase_enemy.hp = 100
+	chase_enemy.max_hp = 100
+	game.arrows.back().pos = chase_enemy.pos
+	var crit_text_count_before: int = game.floating_texts.size()
+	game._update_arrows(0.1)
+	var found_crit_text := false
+	for text_index in range(crit_text_count_before, game.floating_texts.size()):
+		if String(game.floating_texts[text_index].text).begins_with("CRIT"):
+			found_crit_text = true
+	if not found_crit_text:
+		push_error("Critical hit did not create distinct critical damage text.")
 		quit(1)
 		return
 	chase_enemy.kind = "crawler"

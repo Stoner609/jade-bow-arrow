@@ -166,7 +166,13 @@ func _create_enemy_node(enemy: Dictionary) -> Node2D:
 
 # 用途：接收敵人節點受傷事件，顯示傷害數字。
 func _on_enemy_damaged(enemy: Dictionary, damage: int) -> void:
-	floating_texts.append({"pos": enemy.pos + Vector2(-12, -24), "text": str(damage), "color": Color(1.0, 0.9, 0.22), "life": 0.65})
+	var is_crit: bool = bool(enemy.get("last_hit_crit", false))
+	var text := "CRIT %d" % damage if is_crit else str(damage)
+	var color := Color(1.0, 0.38, 0.12) if is_crit else Color(1.0, 0.9, 0.22)
+	var size := 30 if is_crit else 22
+	var life := 0.82 if is_crit else 0.65
+	var velocity := Vector2(0, -50) if is_crit else Vector2(0, -34)
+	floating_texts.append({"pos": enemy.pos + Vector2(-18, -28), "text": text, "color": color, "life": life, "size": size, "velocity": velocity, "shadow": true})
 
 
 # 用途：接收敵人節點死亡事件，移除資料並產生掉落。
@@ -340,7 +346,7 @@ func _show_start_screen() -> void:
 # 用途：重設玩家與關卡，正式開始一輪遊戲。
 func _start_run() -> void:
 	mode = Mode.PLAYING
-	room_index = 1
+	room_index = clamp(Constants.DEBUG_START_ROOM, 1, Constants.MAX_ROOMS)
 	wave_index = 0
 	total_waves = 1
 	wave_break_timer = 0.0
@@ -470,6 +476,7 @@ func _update_arrows(_delta: float) -> void:
 		if hit == -1:
 			continue
 
+		enemies[hit]["pending_hit_crit"] = bool(arrow.get("crit", false))
 		_damage_enemy(hit, int(arrow.damage), arrow.vel.normalized())
 		if arrow.pierce_left > 0:
 			arrow.pierce_left -= 1
@@ -571,6 +578,8 @@ func _update_enemy_shots(_delta: float) -> void:
 # 用途：將傷害委派給敵人節點，節點負責生命、受傷閃爍與死亡訊號。
 func _damage_enemy(index: int, damage: int, direction: Vector2) -> void:
 	var enemy: Dictionary = enemies[index]
+	enemy["last_hit_crit"] = bool(enemy.get("pending_hit_crit", false))
+	enemy.erase("pending_hit_crit")
 	if enemy.kind == "boss":
 		damage = int(round(float(damage) * (1.0 + float(player.get("boss_damage_bonus", 0.0)))))
 	if enemy.has("node") and is_instance_valid(enemy.node):
@@ -587,7 +596,7 @@ func _apply_lifesteal(damage: int) -> void:
 	if heal <= 0:
 		return
 	player.hp = min(int(player.max_hp), int(player.hp) + heal)
-	floating_texts.append({"pos": player.pos + Vector2(-14, -46), "text": "+%d" % heal, "color": Color(0.35, 1.0, 0.5), "life": 0.65})
+	floating_texts.append({"pos": player.pos + Vector2(-18, -48), "text": "+%d" % heal, "color": Color(0.2, 1.0, 0.52), "life": 0.78, "size": 26, "velocity": Vector2(0, -28), "shadow": true})
 
 
 # 用途：扣除玩家生命、顯示受傷效果，並在生命歸零時結束遊戲。
@@ -772,7 +781,7 @@ func _xp_needed() -> int:
 # 用途：更新傷害與回血浮動文字的位置與生命週期。
 func _update_floating_texts(delta: float) -> void:
 	for i in range(floating_texts.size() - 1, -1, -1):
-		floating_texts[i].pos += Vector2(0, -34) * delta
+		floating_texts[i].pos += floating_texts[i].get("velocity", Vector2(0, -34)) * delta
 		floating_texts[i].life -= delta
 		if floating_texts[i].life <= 0.0:
 			floating_texts.remove_at(i)
@@ -852,4 +861,7 @@ func _draw_touch_controls() -> void:
 # 用途：繪製傷害、回血等浮動數字文字。
 func _draw_floating_texts() -> void:
 	for text in floating_texts:
-		draw_string(ThemeDB.fallback_font, text.pos, text.text, HORIZONTAL_ALIGNMENT_LEFT, -1, 22, text.color)
+		var size: int = int(text.get("size", 22))
+		if bool(text.get("shadow", false)):
+			draw_string(ThemeDB.fallback_font, text.pos + Vector2(2, 2), text.text, HORIZONTAL_ALIGNMENT_LEFT, -1, size, Color(0, 0, 0, 0.45))
+		draw_string(ThemeDB.fallback_font, text.pos, text.text, HORIZONTAL_ALIGNMENT_LEFT, -1, size, text.color)
