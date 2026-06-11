@@ -12,7 +12,11 @@ static func create() -> Dictionary:
 		"fire_rate": 0.48,
 		"arrows": 1,
 		"pierce": 0,
-		"ricochet": false
+		"ricochet": false,
+		"lifesteal": 0.0,
+		"crit_chance": 0.0,
+		"crit_multiplier": 1.5,
+		"boss_damage_bonus": 0.0
 	}
 
 
@@ -27,3 +31,7 @@ static func reset(player: Dictionary, start_position: Vector2) -> void:
 	player.arrows = 1
 	player.pierce = 0
 	player.ricochet = false
+	player.lifesteal = 0.0
+	player.crit_chance = 0.0
+	player.crit_multiplier = 1.5
+	player.boss_damage_bonus = 0.0

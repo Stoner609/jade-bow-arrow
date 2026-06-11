@@ -446,7 +446,12 @@ func _fire_at_nearest_enemy() -> void:
 		if count > 1:
 			offset = (float(i) - float(count - 1) * 0.5) * spread
 		var dir := base_dir.rotated(offset)
-		var arrow := ArrowModel.create(player.pos, dir, int(player.power), int(player.pierce))
+		var damage := int(player.power)
+		var is_crit: bool = rng.randf() < float(player.get("crit_chance", 0.0))
+		if is_crit:
+			damage = int(round(float(damage) * float(player.get("crit_multiplier", 1.5))))
+		var arrow := ArrowModel.create(player.pos, dir, damage, int(player.pierce))
+		arrow["crit"] = is_crit
 		arrow["node"] = _create_projectile_node(arrow, "player_arrow")
 		arrows.append(arrow)
 
@@ -566,8 +571,23 @@ func _update_enemy_shots(_delta: float) -> void:
 # 用途：將傷害委派給敵人節點，節點負責生命、受傷閃爍與死亡訊號。
 func _damage_enemy(index: int, damage: int, direction: Vector2) -> void:
 	var enemy: Dictionary = enemies[index]
+	if enemy.kind == "boss":
+		damage = int(round(float(damage) * (1.0 + float(player.get("boss_damage_bonus", 0.0)))))
 	if enemy.has("node") and is_instance_valid(enemy.node):
 		enemy.node.apply_damage(damage, direction)
+	_apply_lifesteal(damage)
+
+
+# 用途：依玩家吸血比例把命中傷害轉成少量回復。
+func _apply_lifesteal(damage: int) -> void:
+	var rate := float(player.get("lifesteal", 0.0))
+	if rate <= 0.0 or player.hp >= player.max_hp:
+		return
+	var heal := int(floor(float(damage) * rate))
+	if heal <= 0:
+		return
+	player.hp = min(int(player.max_hp), int(player.hp) + heal)
+	floating_texts.append({"pos": player.pos + Vector2(-14, -46), "text": "+%d" % heal, "color": Color(0.35, 1.0, 0.5), "life": 0.65})
 
 
 # 用途：扣除玩家生命、顯示受傷效果，並在生命歸零時結束遊戲。
@@ -603,7 +623,7 @@ func _gain_xp(amount: int) -> void:
 # 用途：隨機產生三個升級選項並暫停戰鬥等待玩家選擇。
 func _roll_upgrades() -> void:
 	mode = Mode.UPGRADE
-	upgrade_choices = UpgradeCatalog.choices(rng, 3)
+	upgrade_choices = UpgradeCatalog.choices(rng, 3, player)
 	_log("Level up. Choose an upgrade with 1, 2, or 3.")
 
 

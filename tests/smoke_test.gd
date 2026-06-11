@@ -71,6 +71,19 @@ func _run() -> void:
 		push_error("Upgrade catalog did not apply a stat effect.")
 		quit(1)
 		return
+	upgrade_test_player.arrows = 4
+	upgrade_test_player.ricochet = true
+	var limited_upgrades: Array[Dictionary] = game.UpgradeCatalog.available_upgrades(upgrade_test_player)
+	for upgrade in limited_upgrades:
+		if upgrade.id == "twin_arrow" or upgrade.id == "ricochet":
+			push_error("Upgrade catalog returned an upgrade blocked by player limits.")
+			quit(1)
+			return
+	game.UpgradeCatalog.apply_upgrade(upgrade_test_player, {"effect": {"stat": "speed", "op": "add", "value": 28, "max": 390}})
+	if float(upgrade_test_player.speed) <= 275.0:
+		push_error("Move speed upgrade did not apply.")
+		quit(1)
+		return
 	if game.player_layer.get_child_count() <= 0:
 		push_error("Player scene node was not instantiated.")
 		quit(1)
@@ -173,6 +186,34 @@ func _run() -> void:
 		push_error("Boss scene node did not request a spread shot.")
 		quit(1)
 		return
+	chase_enemy.hp = chase_enemy.max_hp
+	game.player.hp = 50
+	game.player.max_hp = 80
+	game.player.lifesteal = 0.25
+	var hp_before_lifesteal: int = int(game.player.hp)
+	game._damage_enemy(0, 20, Vector2.RIGHT)
+	if int(game.player.hp) <= hp_before_lifesteal:
+		push_error("Lifesteal did not heal the player after damage.")
+		quit(1)
+		return
+	chase_enemy.kind = "boss"
+	chase_enemy.hp = 100
+	game.player.boss_damage_bonus = 0.5
+	game._damage_enemy(0, 20, Vector2.RIGHT)
+	if int(chase_enemy.hp) != 70:
+		push_error("Boss damage bonus did not apply to boss damage.")
+		quit(1)
+		return
+	game.player.crit_chance = 1.0
+	game.player.crit_multiplier = 2.0
+	game._fire_at_nearest_enemy()
+	if game.arrows.is_empty() or int(game.arrows.back().damage) != int(game.player.power) * 2:
+		push_error("Critical upgrade did not affect arrow damage.")
+		quit(1)
+		return
+	chase_enemy.kind = "crawler"
+	chase_enemy.hp = 1
+	chase_enemy.max_hp = 1
 	var enemy_count_before: int = game.enemies.size()
 	var pickup_count_before: int = game.pickups.size()
 	game._damage_enemy(0, int(game.enemies[0].max_hp) + 1, Vector2.RIGHT)

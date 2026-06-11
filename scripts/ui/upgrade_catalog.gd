@@ -4,21 +4,34 @@ const UPGRADES := [
 	{"id": "power_shot", "name": "Power Shot", "desc": "+4 damage", "effect": {"stat": "power", "op": "add", "value": 4}, "weight": 24},
 	{"id": "quick_draw", "name": "Quick Draw", "desc": "faster auto-fire", "effect": {"stat": "fire_rate", "op": "add", "value": -0.06, "min": 0.25}, "weight": 20},
 	{"id": "vitality", "name": "Vitality", "desc": "+18 max HP", "effect": {"stat": "max_hp", "op": "add_with_heal", "value": 18}, "weight": 22},
-	{"id": "twin_arrow", "name": "Twin Arrow", "desc": "+1 arrow", "effect": {"stat": "arrows", "op": "add", "value": 1, "max": 4}, "weight": 14},
-	{"id": "piercing", "name": "Piercing", "desc": "arrows pass through 1 enemy", "effect": {"stat": "pierce", "op": "add", "value": 1, "max": 3}, "weight": 12},
-	{"id": "ricochet", "name": "Ricochet", "desc": "first hit bounces", "effect": {"stat": "ricochet", "op": "set", "value": true}, "weight": 8}
+	{"id": "swift_steps", "name": "Swift Steps", "desc": "+28 move speed", "effect": {"stat": "speed", "op": "add", "value": 28, "max": 390}, "weight": 18},
+	{"id": "blood_arrow", "name": "Blood Arrow", "desc": "heal 6% arrow damage", "effect": {"stat": "lifesteal", "op": "add", "value": 0.06, "max": 0.18}, "weight": 10},
+	{"id": "critical_eye", "name": "Critical Eye", "desc": "+10% crit chance", "effect": {"stat": "crit_chance", "op": "add", "value": 0.10, "max": 0.40}, "weight": 12},
+	{"id": "giant_slayer", "name": "Giant Slayer", "desc": "+18% boss damage", "effect": {"stat": "boss_damage_bonus", "op": "add", "value": 0.18, "max": 0.54}, "weight": 9},
+	{"id": "twin_arrow", "name": "Twin Arrow", "desc": "+1 arrow", "effect": {"stat": "arrows", "op": "add", "value": 1, "max": 4}, "weight": 14, "requires": {"stat": "arrows", "op": "lt", "value": 4}},
+	{"id": "piercing", "name": "Piercing", "desc": "arrows pass through 1 enemy", "effect": {"stat": "pierce", "op": "add", "value": 1, "max": 3}, "weight": 12, "requires": {"stat": "pierce", "op": "lt", "value": 3}},
+	{"id": "ricochet", "name": "Ricochet", "desc": "first hit bounces", "effect": {"stat": "ricochet", "op": "set", "value": true}, "weight": 8, "requires": {"stat": "ricochet", "op": "is_false"}}
 ]
 
 
 # 用途：依照升級權重抽出本次升級選項。
-static func choices(rng: RandomNumberGenerator, count: int = 3) -> Array[Dictionary]:
-	var pool := UPGRADES.duplicate(true)
+static func choices(rng: RandomNumberGenerator, count: int = 3, player: Dictionary = {}) -> Array[Dictionary]:
+	var pool := available_upgrades(player)
 	var selected: Array[Dictionary] = []
 	while selected.size() < count and not pool.is_empty():
 		var index := _weighted_index(pool, rng)
 		selected.append(pool[index])
 		pool.remove_at(index)
 	return selected
+
+
+# 用途：回傳目前玩家狀態允許出現的升級池。
+static func available_upgrades(player: Dictionary) -> Array[Dictionary]:
+	var available: Array[Dictionary] = []
+	for upgrade in UPGRADES:
+		if _meets_requirement(player, upgrade.get("requires", {})):
+			available.append(upgrade.duplicate(true))
+	return available
 
 
 # 用途：把升級資料中的效果套用到玩家數值。
@@ -42,6 +55,21 @@ static func apply_upgrade(player: Dictionary, upgrade: Dictionary) -> void:
 			player.hp = min(int(player.max_hp), int(player.hp) + amount)
 		"set":
 			player[stat] = effect.get("value")
+
+
+# 用途：檢查玩家目前狀態是否符合升級出現限制。
+static func _meets_requirement(player: Dictionary, requirement: Dictionary) -> bool:
+	if requirement.is_empty() or player.is_empty():
+		return true
+	var stat: String = requirement.get("stat", "")
+	var op: String = requirement.get("op", "")
+	var current = player.get(stat)
+	match op:
+		"lt":
+			return current < requirement.get("value")
+		"is_false":
+			return not bool(current)
+	return true
 
 
 # 用途：依照權重回傳升級池中的索引。
