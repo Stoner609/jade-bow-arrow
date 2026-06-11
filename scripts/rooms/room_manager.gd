@@ -11,6 +11,23 @@ const ROOMS := {
 	8: {"layout": "boss", "message": "Final room. Defeat the boss.", "waves": [{"boss": 1}]}
 }
 
+const LAYOUTS := {
+	"pillars": [
+		{"pos": Vector2(106, 260), "size": Vector2(74, 150)},
+		{"pos": Vector2(300, 188), "size": Vector2(66, 220)}
+	],
+	"cross": [
+		{"pos": Vector2(82, 160), "size": Vector2(122, 52)},
+		{"pos": Vector2(258, 430), "size": Vector2(142, 52)},
+		{"pos": Vector2(206, 284), "size": Vector2(70, 96)}
+	],
+	"lanes": [
+		{"pos": Vector2(78, 314), "size": Vector2(136, 48)},
+		{"pos": Vector2(258, 314), "size": Vector2(136, 48)}
+	],
+	"boss": []
+}
+
 
 static func obstacle_layout(room_index: int, arena: Rect2) -> Array[Rect2]:
 	var room: Dictionary = room_data(room_index, room_index)
@@ -20,16 +37,9 @@ static func obstacle_layout(room_index: int, arena: Rect2) -> Array[Rect2]:
 
 static func obstacle_layout_for(layout: String, arena: Rect2) -> Array[Rect2]:
 	var obstacles: Array[Rect2] = []
-	if layout == "pillars":
-		obstacles.append(Rect2(arena.position + Vector2(106, 260), Vector2(74, 150)))
-		obstacles.append(Rect2(arena.position + Vector2(300, 188), Vector2(66, 220)))
-	elif layout == "cross":
-		obstacles.append(Rect2(arena.position + Vector2(82, 160), Vector2(122, 52)))
-		obstacles.append(Rect2(arena.position + Vector2(258, 430), Vector2(142, 52)))
-		obstacles.append(Rect2(arena.position + Vector2(206, 284), Vector2(70, 96)))
-	elif layout == "lanes":
-		obstacles.append(Rect2(arena.position + Vector2(78, 314), Vector2(136, 48)))
-		obstacles.append(Rect2(arena.position + Vector2(258, 314), Vector2(136, 48)))
+	var specs: Array = LAYOUTS.get(layout, LAYOUTS.pillars)
+	for spec in specs:
+		obstacles.append(Rect2(arena.position + spec.pos, spec.size))
 	return obstacles
 
 

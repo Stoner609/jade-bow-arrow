@@ -51,8 +51,24 @@ func _run() -> void:
 		push_error("Room message should come from room data.")
 		quit(1)
 		return
+	if game.RoomManager.obstacle_layout_for("cross", game.Constants.ARENA).size() != 3:
+		push_error("Obstacle layout table did not return the expected cross layout.")
+		quit(1)
+		return
 	if not game.RoomManager.obstacle_layout(game.Constants.MAX_ROOMS, game.Constants.ARENA).is_empty():
 		push_error("Boss room layout should be configured without obstacles.")
+		quit(1)
+		return
+	var upgrades: Array[Dictionary] = game.UpgradeCatalog.choices(game.rng, 3)
+	if upgrades.size() != 3 or not upgrades[0].has("effect") or not upgrades[0].has("weight"):
+		push_error("Upgrade catalog should return weighted data-driven upgrades.")
+		quit(1)
+		return
+	var upgrade_test_player: Dictionary = game.PlayerModel.create()
+	var power_upgrade := {"effect": {"stat": "power", "op": "add", "value": 4}}
+	game.UpgradeCatalog.apply_upgrade(upgrade_test_player, power_upgrade)
+	if int(upgrade_test_player.power) != 17:
+		push_error("Upgrade catalog did not apply a stat effect.")
 		quit(1)
 		return
 	if game.player_layer.get_child_count() <= 0:

@@ -603,9 +603,7 @@ func _gain_xp(amount: int) -> void:
 # 用途：隨機產生三個升級選項並暫停戰鬥等待玩家選擇。
 func _roll_upgrades() -> void:
 	mode = Mode.UPGRADE
-	upgrade_choices = UpgradeCatalog.choices()
-	upgrade_choices.shuffle()
-	upgrade_choices = upgrade_choices.slice(0, 3)
+	upgrade_choices = UpgradeCatalog.choices(rng, 3)
 	_log("Level up. Choose an upgrade with 1, 2, or 3.")
 
 
@@ -615,7 +613,7 @@ func _take_upgrade(index: int) -> void:
 		return
 
 	var upgrade: Dictionary = upgrade_choices[index]
-	PlayerModel.apply_upgrade(player, upgrade.stat)
+	UpgradeCatalog.apply_upgrade(player, upgrade)
 	_log("Upgrade: %s." % upgrade.name)
 	upgrade_choices.clear()
 	mode = Mode.PLAYING
