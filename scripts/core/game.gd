@@ -361,7 +361,6 @@ func _start_run() -> void:
 	joystick_touch_index = -1
 	PlayerModel.reset(player, _player_start_position())
 	_spawn_room()
-	_log("Clear the room. Stop moving to auto-fire.")
 	_refresh()
 
 
@@ -386,10 +385,7 @@ func _start_next_wave() -> void:
 	var wave: Array[String] = RoomManager.enemy_wave(room_index, wave_index, Constants.MAX_ROOMS)
 	for kind in wave:
 		_spawn_enemy(kind)
-	if room_index >= Constants.MAX_ROOMS:
-		_log("Final room. Defeat the boss.")
-	else:
-		_log("Room %d/%d - Wave %d/%d." % [room_index, Constants.MAX_ROOMS, wave_index, total_waves])
+	_log(RoomManager.room_message(room_index, wave_index, Constants.MAX_ROOMS))
 
 
 # 用途：依照房間編號產生不同配置的場地障礙物。

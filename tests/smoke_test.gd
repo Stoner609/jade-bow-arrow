@@ -47,6 +47,14 @@ func _run() -> void:
 		push_error("Boss room wave count should be data-driven as one wave.")
 		quit(1)
 		return
+	if game.RoomManager.room_message(5, 1, game.Constants.MAX_ROOMS) != "Brutes can take more hits.":
+		push_error("Room message should come from room data.")
+		quit(1)
+		return
+	if not game.RoomManager.obstacle_layout(game.Constants.MAX_ROOMS, game.Constants.ARENA).is_empty():
+		push_error("Boss room layout should be configured without obstacles.")
+		quit(1)
+		return
 	if game.player_layer.get_child_count() <= 0:
 		push_error("Player scene node was not instantiated.")
 		quit(1)

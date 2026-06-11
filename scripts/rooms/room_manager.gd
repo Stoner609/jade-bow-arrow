@@ -1,27 +1,33 @@
 extends RefCounted
 
-const ROOM_WAVES := {
-	1: [{"crawler": 5}],
-	2: [{"crawler": 6, "spitter": 1}],
-	3: [{"crawler": 7, "spitter": 1}, {"crawler": 8, "spitter": 1}],
-	4: [{"crawler": 8, "spitter": 1, "runner": 1}, {"crawler": 9, "spitter": 1, "runner": 1}],
-	5: [{"crawler": 9, "spitter": 1, "runner": 1}, {"crawler": 10, "spitter": 1, "runner": 1, "brute": 1}],
-	6: [{"crawler": 10, "spitter": 1, "runner": 1}, {"crawler": 11, "spitter": 1, "runner": 1, "brute": 1}, {"crawler": 12, "spitter": 1, "runner": 1, "brute": 1}],
-	7: [{"crawler": 11, "spitter": 2, "runner": 2}, {"crawler": 12, "spitter": 2, "runner": 2, "brute": 1}, {"crawler": 13, "spitter": 2, "runner": 2, "brute": 1}],
-	8: [{"boss": 1}]
+const ROOMS := {
+	1: {"layout": "pillars", "message": "Clear the room. Stop moving to auto-fire.", "waves": [{"crawler": 5}]},
+	2: {"layout": "cross", "message": "Keep distance from spitters.", "waves": [{"crawler": 6, "spitter": 1}]},
+	3: {"layout": "lanes", "message": "Survive two waves.", "waves": [{"crawler": 7, "spitter": 1}, {"crawler": 8, "spitter": 1}]},
+	4: {"layout": "pillars", "message": "Runners join the fight.", "waves": [{"crawler": 8, "spitter": 1, "runner": 1}, {"crawler": 9, "spitter": 1, "runner": 1}]},
+	5: {"layout": "cross", "message": "Brutes can take more hits.", "waves": [{"crawler": 9, "spitter": 1, "runner": 1}, {"crawler": 10, "spitter": 1, "runner": 1, "brute": 1}]},
+	6: {"layout": "lanes", "message": "Three waves. Control the center.", "waves": [{"crawler": 10, "spitter": 1, "runner": 1}, {"crawler": 11, "spitter": 1, "runner": 1, "brute": 1}, {"crawler": 12, "spitter": 1, "runner": 1, "brute": 1}]},
+	7: {"layout": "pillars", "message": "Final swarm before the boss.", "waves": [{"crawler": 11, "spitter": 2, "runner": 2}, {"crawler": 12, "spitter": 2, "runner": 2, "brute": 1}, {"crawler": 13, "spitter": 2, "runner": 2, "brute": 1}]},
+	8: {"layout": "boss", "message": "Final room. Defeat the boss.", "waves": [{"boss": 1}]}
 }
 
 
 static func obstacle_layout(room_index: int, arena: Rect2) -> Array[Rect2]:
+	var room: Dictionary = room_data(room_index, room_index)
+	var layout: String = room.get("layout", "pillars")
+	return obstacle_layout_for(layout, arena)
+
+
+static func obstacle_layout_for(layout: String, arena: Rect2) -> Array[Rect2]:
 	var obstacles: Array[Rect2] = []
-	if room_index % 3 == 1:
+	if layout == "pillars":
 		obstacles.append(Rect2(arena.position + Vector2(106, 260), Vector2(74, 150)))
 		obstacles.append(Rect2(arena.position + Vector2(300, 188), Vector2(66, 220)))
-	elif room_index % 3 == 2:
+	elif layout == "cross":
 		obstacles.append(Rect2(arena.position + Vector2(82, 160), Vector2(122, 52)))
 		obstacles.append(Rect2(arena.position + Vector2(258, 430), Vector2(142, 52)))
 		obstacles.append(Rect2(arena.position + Vector2(206, 284), Vector2(70, 96)))
-	else:
+	elif layout == "lanes":
 		obstacles.append(Rect2(arena.position + Vector2(78, 314), Vector2(136, 48)))
 		obstacles.append(Rect2(arena.position + Vector2(258, 314), Vector2(136, 48)))
 	return obstacles
@@ -36,13 +42,13 @@ static func gate_position(arena: Rect2) -> Vector2:
 
 
 static func wave_count(room_index: int, max_rooms: int) -> int:
-	var room_waves: Array = ROOM_WAVES.get(min(room_index, max_rooms), [])
+	var room_waves: Array = room_waves(room_index, max_rooms)
 	return max(1, room_waves.size())
 
 
 static func enemy_wave(room_index: int, wave_index: int, max_rooms: int) -> Array[String]:
 	var enemies: Array[String] = []
-	var room_waves: Array = ROOM_WAVES.get(min(room_index, max_rooms), [])
+	var room_waves: Array = room_waves(room_index, max_rooms)
 	if room_waves.is_empty():
 		return enemies
 	var wave: Dictionary = room_waves[clamp(wave_index - 1, 0, room_waves.size() - 1)]
@@ -50,3 +56,21 @@ static func enemy_wave(room_index: int, wave_index: int, max_rooms: int) -> Arra
 		for i in int(wave[kind]):
 			enemies.append(kind)
 	return enemies
+
+
+static func room_message(room_index: int, wave_index: int, max_rooms: int) -> String:
+	var room: Dictionary = room_data(room_index, max_rooms)
+	if room_index >= max_rooms:
+		return room.get("message", "Final room. Defeat the boss.")
+	var wave_total := wave_count(room_index, max_rooms)
+	if wave_index <= 1:
+		return room.get("message", "Room %d/%d - Wave %d/%d." % [room_index, max_rooms, wave_index, wave_total])
+	return "Room %d/%d - Wave %d/%d." % [room_index, max_rooms, wave_index, wave_total]
+
+
+static func room_data(room_index: int, max_rooms: int) -> Dictionary:
+	return ROOMS.get(min(room_index, max_rooms), {})
+
+
+static func room_waves(room_index: int, max_rooms: int) -> Array:
+	return room_data(room_index, max_rooms).get("waves", [])
