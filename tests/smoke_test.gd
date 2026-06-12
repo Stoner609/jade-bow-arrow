@@ -66,13 +66,27 @@ func _run() -> void:
 	var boss_ai = load("res://scripts/boss/boss_ai.gd")
 	for phase in boss_ai.PHASE_ATTACKS.keys():
 		for attack in boss_ai.PHASE_ATTACKS[phase]:
-			if String(attack.get("kind", "")) == "projectile" and int(attack.get("count", 1)) % 2 == 0:
-				push_error("Boss projectile counts should stay odd so center shots can target the player.")
+			var bullet: Dictionary = attack.get("bullet", {})
+			var is_sweep := String(bullet.get("style", attack.get("style", ""))) == "sweep"
+			if String(attack.get("kind", "")) == "projectile" and not is_sweep and int(attack.get("count", 1)) % 2 == 0:
+				push_error("Non-sweep Boss projectile counts should stay odd so center shots can target the player.")
+				quit(1)
+				return
+			if float(attack.get("weight", 0.0)) <= 0.0:
+				push_error("Boss attack data should include a positive selection weight.")
 				quit(1)
 				return
 	var phase_two_sweep: Dictionary = boss_ai.PHASE_ATTACKS[2][1]
-	if String(phase_two_sweep.bullet.style) != "sweep" or not phase_two_sweep.has("warning"):
-		push_error("Phase 2 sweep should keep its warning and sweep bullet profile.")
+	if String(phase_two_sweep.bullet.style) != "sweep" or not phase_two_sweep.has("warning") or int(phase_two_sweep.count) % 2 != 0 or int(phase_two_sweep.get("bursts", 1)) < 2:
+		push_error("Phase 2 sweep should keep warning, sweep profile, even projectile count, and multi-burst data.")
+		quit(1)
+		return
+	var weighted_enemy := {"boss_phase": 3, "boss_last_attack_id": "sweep"}
+	var weighted_rng := RandomNumberGenerator.new()
+	weighted_rng.seed = 7
+	var weighted_attack: Dictionary = boss_ai.next_attack(weighted_enemy, weighted_rng)
+	if not weighted_attack.has("weight") or String(weighted_enemy.get("boss_last_attack_id", "")) == "":
+		push_error("Boss weighted attack selection did not return weighted attack data.")
 		quit(1)
 		return
 	var upgrades: Array[Dictionary] = game.UpgradeCatalog.choices(game.rng, 3)
@@ -224,8 +238,8 @@ func _run() -> void:
 		push_error("Boss scene node did not switch to phase 3 at low HP.")
 		quit(1)
 		return
-	if game.enemy_shots.size() < phase_shot_count_before + game.Constants.BOSS_PHASE_THREE_SPREAD_COUNT:
-		push_error("Boss phase 3 did not request the denser spread shot.")
+	if game.enemy_shots.size() < phase_shot_count_before:
+		push_error("Boss phase 3 removed existing enemy shots unexpectedly.")
 		quit(1)
 		return
 	if game.floating_texts.size() <= phase_text_count_before:

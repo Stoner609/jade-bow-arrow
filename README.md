@@ -37,6 +37,10 @@ godot --headless --path . --script res://tests/smoke_test.gd
 
 Use [docs/balance-test.md](/Users/hsuhaoche/rogue-game/docs/balance-test.md) to record 3-5 minute run timing, death points, boss kill time, and upgrade combinations.
 
+## Roadmap
+
+Use [docs/roadmap.md](/Users/hsuhaoche/rogue-game/docs/roadmap.md) to track the current short-term and mid-term plans.
+
 ## iOS Export
 
 ```sh
@@ -82,6 +86,10 @@ godot --headless --path . --script res://tests/smoke_test.gd
 ### 平衡測試
 
 使用 [docs/balance-test.md](/Users/hsuhaoche/rogue-game/docs/balance-test.md) 記錄 3 到 5 分鐘流程、死亡點、Boss 擊殺時間與升級組合。
+
+### 後續計劃
+
+使用 [docs/roadmap.md](/Users/hsuhaoche/rogue-game/docs/roadmap.md) 追蹤目前短期與中期計劃。
 
 ### iOS 匯出
 

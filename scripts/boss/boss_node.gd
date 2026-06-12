@@ -52,7 +52,7 @@ func update_boss_position(player_position: Vector2, delta: float) -> Vector2:
 
 # 用途：選擇並啟動下一個 Boss 招式。
 func _start_attack(direction: Vector2) -> void:
-	var attack := BossAI.next_attack(enemy_data)
+	var attack := BossAI.next_attack(enemy_data, rng)
 	var phase: int = int(enemy_data.get("boss_phase", 1))
 	enemy_data.shoot_cd = rng.randf_range(BossAI.cooldown_min(phase), BossAI.cooldown_max(phase))
 	if String(attack.kind) == "dash":
@@ -100,7 +100,8 @@ func _update_pending_attacks(delta: float) -> void:
 		pending.timer = float(pending.timer) - delta
 		if float(pending.timer) > 0.0:
 			continue
-		boss_attack_requested.emit(enemy_data, pending.direction, pending.attack)
+		boss_attack_requested.emit(enemy_data, _burst_direction(pending.direction, pending.attack, int(pending.get("burst_index", 0))), pending.attack)
+		_schedule_next_burst(pending)
 		pending_attacks.remove_at(i)
 
 
@@ -130,7 +131,7 @@ func _draw_warnings() -> void:
 			continue
 		var duration: float = max(0.01, float(pending.get("duration", pending.timer)))
 		var progress: float = 1.0 - clampf(float(pending.timer) / duration, 0.0, 1.0)
-		_draw_sweep_warning(enemy_data.pos, pending.direction, attack, progress)
+		_draw_sweep_warning(enemy_data.pos, _burst_direction(pending.direction, attack, int(pending.get("burst_index", 0))), attack, progress)
 	var warning_left := float(enemy_data.get("boss_dash_warning", 0.0))
 	if warning_left <= 0.0:
 		return
@@ -145,6 +146,30 @@ func _draw_warnings() -> void:
 func _attack_bullet_style(attack: Dictionary) -> String:
 	var bullet: Dictionary = attack.get("bullet", {})
 	return String(bullet.get("style", attack.get("style", "")))
+
+
+# 用途：排程同一個 sweep 招式的下一段掃射。
+func _schedule_next_burst(pending: Dictionary) -> void:
+	var attack: Dictionary = pending.attack
+	var next_index := int(pending.get("burst_index", 0)) + 1
+	if next_index >= int(attack.get("bursts", 1)):
+		return
+	pending_attacks.append({
+		"direction": pending.direction,
+		"attack": attack.duplicate(true),
+		"timer": float(attack.get("burst_delay", 0.0)),
+		"duration": float(attack.get("burst_delay", 0.01)),
+		"burst_index": next_index
+	})
+
+
+# 用途：依掃射段數偏移方向，讓連續掃射有左右擺動。
+func _burst_direction(direction: Vector2, attack: Dictionary, burst_index: int) -> Vector2:
+	if burst_index <= 0:
+		return direction
+	var offset := float(attack.get("burst_offset", 0.0))
+	var side := 1.0 if burst_index % 2 == 1 else -1.0
+	return direction.rotated(offset * side)
 
 
 # 用途：繪製掃射前的扇形危險範圍。
