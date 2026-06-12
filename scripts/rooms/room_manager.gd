@@ -1,13 +1,13 @@
 extends RefCounted
 
 const ROOMS := {
-	1: {"layout": "pillars", "message": "Clear the room. Stop moving to auto-fire.", "waves": [{"crawler": 5}]},
-	2: {"layout": "cross", "message": "Keep distance from spitters.", "waves": [{"crawler": 6, "spitter": 1}]},
-	3: {"layout": "lanes", "message": "Survive two waves.", "waves": [{"crawler": 7, "spitter": 1}, {"crawler": 8, "spitter": 1}]},
-	4: {"layout": "pillars", "message": "Runners join the fight.", "waves": [{"crawler": 8, "spitter": 1, "runner": 1}, {"crawler": 9, "spitter": 1, "runner": 1}]},
-	5: {"layout": "cross", "message": "Brutes can take more hits.", "waves": [{"crawler": 9, "spitter": 1, "runner": 1}, {"crawler": 10, "spitter": 1, "runner": 1, "brute": 1}]},
-	6: {"layout": "lanes", "message": "Three waves. Control the center.", "waves": [{"crawler": 10, "spitter": 1, "runner": 1}, {"crawler": 11, "spitter": 1, "runner": 1, "brute": 1}, {"crawler": 12, "spitter": 1, "runner": 1, "brute": 1}]},
-	7: {"layout": "pillars", "message": "Final swarm before the boss.", "waves": [{"crawler": 11, "spitter": 2, "runner": 2}, {"crawler": 12, "spitter": 2, "runner": 2, "brute": 1}, {"crawler": 13, "spitter": 2, "runner": 2, "brute": 1}]},
+	1: {"layout": "pillars", "message": "Clear the room. Stop moving to auto-fire.", "waves": [{"crawler": 6}]},
+	2: {"layout": "cross", "message": "Keep distance from spitters.", "waves": [{"crawler": 8, "spitter": 1}]},
+	3: {"layout": "lanes", "message": "Survive two waves.", "waves": [{"crawler": 9, "spitter": 1}, {"crawler": 10, "spitter": 1}]},
+	4: {"layout": "pillars", "message": "Runners join the fight.", "waves": [{"crawler": 10, "spitter": 1, "runner": 1}, {"crawler": 11, "spitter": 1, "runner": 1}]},
+	5: {"layout": "cross", "message": "Brutes can take more hits.", "waves": [{"crawler": 11, "spitter": 1, "runner": 1}, {"crawler": 12, "spitter": 1, "runner": 1, "brute": 1}]},
+	6: {"layout": "lanes", "message": "Three waves. Control the center.", "waves": [{"crawler": 11, "spitter": 1, "runner": 1}, {"crawler": 12, "spitter": 1, "runner": 1, "brute": 1}, {"crawler": 13, "spitter": 1, "runner": 1, "brute": 1}]},
+	7: {"layout": "pillars", "message": "Final swarm before the boss.", "waves": [{"crawler": 12, "spitter": 2, "runner": 2}, {"crawler": 13, "spitter": 2, "runner": 2, "brute": 1}, {"crawler": 14, "spitter": 2, "runner": 2, "brute": 1}]},
 	8: {"layout": "boss", "message": "Final room. Defeat the boss.", "waves": [{"boss": 1}]}
 }
 

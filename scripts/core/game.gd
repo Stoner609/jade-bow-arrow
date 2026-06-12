@@ -12,8 +12,10 @@ const UpgradeCatalog := preload("res://scripts/ui/upgrade_catalog.gd")
 const TouchControls := preload("res://scripts/ui/touch_controls.gd")
 const CollisionUtils := preload("res://scripts/utils/collision_utils.gd")
 const CombatRenderer := preload("res://scripts/rendering/combat_renderer.gd")
+const BalanceTracker := preload("res://scripts/debug/balance_tracker.gd")
 const PlayerScene := preload("res://scenes/actors/Player.tscn")
 const EnemyScene := preload("res://scenes/actors/Enemy.tscn")
+const BossScene := preload("res://scenes/actors/Boss.tscn")
 const ProjectileScene := preload("res://scenes/projectiles/Projectile.tscn")
 const PickupScene := preload("res://scenes/pickups/Pickup.tscn")
 
@@ -39,6 +41,7 @@ var damage_flash := 0.0
 var muted := false
 var upgrade_choices: Array = []
 var messages: Array[String] = []
+var balance_tracker := BalanceTracker.new()
 
 var player: Dictionary = PlayerModel.create()
 
@@ -78,8 +81,8 @@ func _process(delta: float) -> void:
 	damage_flash = max(0.0, damage_flash - delta)
 	_update_player(delta)
 	_update_arrows(delta)
-	_update_enemy_shots(delta)
 	_update_enemies(delta)
+	_update_enemy_shots(delta)
 	_update_pickups()
 	_update_floating_texts(delta)
 	_update_wave_flow(delta)
@@ -154,13 +157,20 @@ func _connect_hud_signals() -> void:
 
 # 用途：建立敵人的場景節點，讓視覺呈現在 scene tree 中。
 func _create_enemy_node(enemy: Dictionary) -> Node2D:
-	var node := EnemyScene.instantiate() as Node2D
+	var scene: PackedScene = BossScene if enemy.kind == "boss" else EnemyScene
+	var node := scene.instantiate() as Node2D
 	enemy_layer.add_child(node)
 	node.sync_from_model(enemy, elapsed)
 	node.damaged.connect(_on_enemy_damaged)
 	node.died.connect(_on_enemy_died)
-	node.shot_requested.connect(_on_enemy_shot_requested)
-	node.spread_shot_requested.connect(_on_enemy_spread_shot_requested)
+	if node.has_signal("shot_requested"):
+		node.connect("shot_requested", Callable(self, "_on_enemy_shot_requested"))
+	if node.has_signal("spread_shot_requested"):
+		node.connect("spread_shot_requested", Callable(self, "_on_enemy_spread_shot_requested"))
+	if node.has_signal("boss_attack_requested"):
+		node.connect("boss_attack_requested", Callable(self, "_on_enemy_boss_attack_requested"))
+	if node.has_signal("phase_changed"):
+		node.connect("phase_changed", Callable(self, "_on_enemy_phase_changed"))
 	return node
 
 
@@ -179,7 +189,7 @@ func _on_enemy_damaged(enemy: Dictionary, damage: int) -> void:
 func _on_enemy_died(enemy: Dictionary) -> void:
 	if not enemies.has(enemy):
 		return
-	var xp_value: int = 24 if enemy.kind == "boss" else 4 + room_index
+	var xp_value: int = 30 if enemy.kind == "boss" else 2 + int(ceil(float(room_index) * 0.6))
 	var drop_pos: Vector2 = enemy.pos
 	_free_entity_node(enemy)
 	enemies.erase(enemy)
@@ -205,7 +215,43 @@ func _on_enemy_spread_shot_requested(enemy: Dictionary, direction: Vector2, coun
 		return
 	_fire_enemy_spread(enemy.pos, direction, count, spread)
 	if enemy.has("node") and is_instance_valid(enemy.node):
-		enemy.node.set_shoot_cooldown(rng.randf_range(Constants.BOSS_SHOOT_COOLDOWN_MIN, Constants.BOSS_SHOOT_COOLDOWN_MAX))
+		var phase: int = int(enemy.get("boss_phase", 1))
+		enemy.node.set_shoot_cooldown(rng.randf_range(_boss_cooldown_min(phase), _boss_cooldown_max(phase)))
+
+
+# 用途：接收 Boss 節點的招式請求，依資料表產生子彈或顯示衝刺提示。
+func _on_enemy_boss_attack_requested(enemy: Dictionary, direction: Vector2, attack: Dictionary) -> void:
+	if not enemies.has(enemy):
+		return
+	if String(attack.kind) == "projectile":
+		_fire_enemy_attack_pattern(enemy.pos, direction, attack)
+
+
+# 用途：接收 Boss 階段變化，顯示短暫提示讓玩家知道節奏升級。
+func _on_enemy_phase_changed(enemy: Dictionary, phase: int) -> void:
+	if not enemies.has(enemy):
+		return
+	var text := "BOSS PHASE %d" % phase
+	var color := Color(1.0, 0.48, 0.16) if phase == 2 else Color(0.9, 0.28, 1.0)
+	floating_texts.append({"pos": enemy.pos + Vector2(-64, -62), "text": text, "color": color, "life": 1.0, "size": 26, "velocity": Vector2(0, -24), "shadow": true})
+
+
+# 用途：取得 Boss 目前階段的射擊冷卻下限。
+func _boss_cooldown_min(phase: int) -> float:
+	if phase >= 3:
+		return Constants.BOSS_PHASE_THREE_SHOOT_COOLDOWN_MIN
+	if phase == 2:
+		return Constants.BOSS_PHASE_TWO_SHOOT_COOLDOWN_MIN
+	return Constants.BOSS_SHOOT_COOLDOWN_MIN
+
+
+# 用途：取得 Boss 目前階段的射擊冷卻上限。
+func _boss_cooldown_max(phase: int) -> float:
+	if phase >= 3:
+		return Constants.BOSS_PHASE_THREE_SHOOT_COOLDOWN_MAX
+	if phase == 2:
+		return Constants.BOSS_PHASE_TWO_SHOOT_COOLDOWN_MAX
+	return Constants.BOSS_SHOOT_COOLDOWN_MAX
 
 
 # 用途：建立玩家或敵方投射物的場景節點。
@@ -347,6 +393,7 @@ func _show_start_screen() -> void:
 func _start_run() -> void:
 	mode = Mode.PLAYING
 	room_index = clamp(Constants.DEBUG_START_ROOM, 1, Constants.MAX_ROOMS)
+	balance_tracker.start_run(room_index)
 	wave_index = 0
 	total_waves = 1
 	wave_break_timer = 0.0
@@ -373,6 +420,7 @@ func _start_run() -> void:
 # 用途：建立目前房間的障礙物、敵人與戰鬥狀態。
 func _spawn_room() -> void:
 	room_clear = false
+	balance_tracker.enter_room(room_index, Constants.MAX_ROOMS)
 	_clear_combat_nodes()
 	enemies.clear()
 	arrows.clear()
@@ -404,6 +452,8 @@ func _spawn_enemy(kind: String) -> void:
 	var enemy := EnemyModel.create(kind, room_index, _random_spawn_position(), rng)
 	enemy["node"] = _create_enemy_node(enemy)
 	enemies.append(enemy)
+	if kind == "boss":
+		floating_texts.append({"pos": Constants.ARENA.get_center() + Vector2(-86, -218), "text": "BOSS INCOMING", "color": Color(1.0, 0.72, 0.22), "life": 1.2, "size": 28, "velocity": Vector2(0, -18), "shadow": true})
 
 
 # 用途：尋找遠離玩家且不在障礙物內的敵人出生位置。
@@ -509,16 +559,19 @@ func _update_enemies(delta: float) -> void:
 		var distance: float = to_player.length()
 		if enemy.kind == "boss" and distance < Constants.BOSS_ACTIVE_RANGE:
 			var shot_direction := to_player.normalized()
-			if has_enemy_node:
+			var has_boss_node: bool = has_enemy_node and enemy.node.has_method("update_boss_position")
+			if has_boss_node:
 				shot_direction = enemy.node.update_boss_position(player.pos, delta)
 			else:
+				_update_boss_phase_fallback(enemy)
 				if distance < Constants.BOSS_RETREAT_DISTANCE:
 					enemy.pos -= shot_direction * float(enemy.speed) * Constants.BOSS_RETREAT_SPEED_SCALE * delta
 				elif distance > Constants.BOSS_APPROACH_DISTANCE:
 					enemy.pos += shot_direction * float(enemy.speed) * delta
-			if not has_enemy_node and enemy.shoot_cd <= 0.0:
-				_fire_enemy_spread(enemy.pos, shot_direction, Constants.BOSS_SPREAD_COUNT, Constants.BOSS_SPREAD_ANGLE)
-				enemy.shoot_cd = rng.randf_range(Constants.BOSS_SHOOT_COOLDOWN_MIN, Constants.BOSS_SHOOT_COOLDOWN_MAX)
+			if not has_boss_node and enemy.shoot_cd <= 0.0:
+				var phase: int = int(enemy.get("boss_phase", 1))
+				_fire_enemy_spread(enemy.pos, shot_direction, _boss_spread_count(phase), _boss_spread_angle(phase))
+				enemy.shoot_cd = rng.randf_range(_boss_cooldown_min(phase), _boss_cooldown_max(phase))
 		elif enemy.kind == "spitter":
 			if has_enemy_node:
 				enemy.node.update_spitter(player.pos, delta)
@@ -550,6 +603,23 @@ func _fire_enemy_shot(origin: Vector2, direction: Vector2) -> void:
 	enemy_shots.append(shot)
 
 
+# 用途：從指定位置朝指定方向產生可調整速度與外觀的 Boss 子彈。
+func _fire_boss_shot(origin: Vector2, direction: Vector2, attack: Dictionary) -> void:
+	var shot := EnemyShotModel.create(origin, direction, room_index)
+	var bullet: Dictionary = attack.get("bullet", {})
+	shot.vel *= float(attack.get("speed_scale", 1.0)) * float(bullet.get("speed_scale", 1.0))
+	shot.life = float(attack.get("life", shot.life))
+	shot.damage = int(round(float(shot.damage) * float(attack.get("damage_scale", 1.0)) * float(bullet.get("damage_scale", 1.0))))
+	shot["radius"] = float(bullet.get("radius", shot.get("radius", 7.0)))
+	shot["visual_radius"] = float(bullet.get("visual_radius", shot.get("visual_radius", shot.radius)))
+	shot["shot_style"] = String(bullet.get("style", attack.get("style", "normal")))
+	shot["glow_color"] = bullet.get("glow_color", Color(1.0, 0.18, 0.82, 0.18))
+	shot["core_color"] = bullet.get("core_color", Color(1.0, 0.16, 0.78))
+	shot["highlight_color"] = bullet.get("highlight_color", Color(1.0, 0.76, 1.0))
+	shot["node"] = _create_projectile_node(shot, "enemy_shot")
+	enemy_shots.append(shot)
+
+
 # 用途：讓 Boss 或特殊敵人一次發射多顆散射子彈。
 func _fire_enemy_spread(origin: Vector2, direction: Vector2, count: int, spread: float) -> void:
 	for i in count:
@@ -559,17 +629,61 @@ func _fire_enemy_spread(origin: Vector2, direction: Vector2, count: int, spread:
 		_fire_enemy_shot(origin, direction.rotated(offset))
 
 
+# 用途：依 Boss 招式資料表產生對應的彈幕排列。
+func _fire_enemy_attack_pattern(origin: Vector2, direction: Vector2, attack: Dictionary) -> void:
+	var count := int(attack.get("count", 1))
+	var spread := float(attack.get("spread", 0.0))
+	for i in count:
+		var offset := 0.0
+		if count > 1:
+			offset = (float(i) - float(count - 1) * 0.5) * spread
+		_fire_boss_shot(origin, direction.rotated(offset), attack)
+
+
+# 用途：取得 Boss 目前階段的散射子彈數。
+func _boss_spread_count(phase: int) -> int:
+	if phase >= 3:
+		return Constants.BOSS_PHASE_THREE_SPREAD_COUNT
+	if phase == 2:
+		return Constants.BOSS_PHASE_TWO_SPREAD_COUNT
+	return Constants.BOSS_SPREAD_COUNT
+
+
+# 用途：取得 Boss 目前階段的散射角度。
+func _boss_spread_angle(phase: int) -> float:
+	if phase >= 3:
+		return Constants.BOSS_PHASE_THREE_SPREAD_ANGLE
+	if phase == 2:
+		return Constants.BOSS_PHASE_TWO_SPREAD_ANGLE
+	return Constants.BOSS_SPREAD_ANGLE
+
+
+# 用途：提供沒有 BossNode 時的階段 fallback，主要保護測試與舊資料。
+func _update_boss_phase_fallback(enemy: Dictionary) -> void:
+	var ratio: float = clampf(float(enemy.hp) / max(1.0, float(enemy.max_hp)), 0.0, 1.0)
+	var current_phase: int = int(enemy.get("boss_phase", 1))
+	var next_phase := 1
+	if ratio <= Constants.BOSS_PHASE_THREE_RATIO:
+		next_phase = 3
+	elif ratio <= Constants.BOSS_PHASE_TWO_RATIO:
+		next_phase = 2
+	enemy["boss_phase"] = next_phase
+	if current_phase != next_phase:
+		_on_enemy_phase_changed(enemy, next_phase)
+
+
 # 用途：更新敵人子彈飛行、撞牆消失與命中玩家傷害。
 func _update_enemy_shots(_delta: float) -> void:
 	for i in range(enemy_shots.size() - 1, -1, -1):
 		var shot: Dictionary = enemy_shots[i]
 
-		if not Constants.ARENA.has_point(shot.pos) or _point_in_obstacle(shot.pos, 7.0):
+		var radius: float = shot.get("radius", 7.0)
+		if not Constants.ARENA.has_point(shot.pos) or _point_in_obstacle(shot.pos, radius):
 			_free_entity_node(shot)
 			enemy_shots.remove_at(i)
 			continue
 
-		if shot.pos.distance_to(player.pos) <= Constants.PLAYER_RADIUS + 7.0:
+		if shot.pos.distance_to(player.pos) <= Constants.PLAYER_RADIUS + radius:
 			_damage_player(int(shot.damage))
 			_free_entity_node(shot)
 			enemy_shots.remove_at(i)
@@ -606,6 +720,7 @@ func _damage_player(damage: int) -> void:
 	floating_texts.append({"pos": player.pos + Vector2(-18, -32), "text": "-%d" % damage, "color": Color(1.0, 0.2, 0.16), "life": 0.72})
 	if player.hp <= 0:
 		mode = Mode.DEAD
+		balance_tracker.record_death(room_index, "damage")
 		touch_axis = Vector2.ZERO
 		joystick_active = false
 		joystick_touch_index = -1
@@ -643,6 +758,7 @@ func _take_upgrade(index: int) -> void:
 
 	var upgrade: Dictionary = upgrade_choices[index]
 	UpgradeCatalog.apply_upgrade(player, upgrade)
+	balance_tracker.record_upgrade(int(player.level), String(upgrade.name))
 	_log("Upgrade: %s." % upgrade.name)
 	upgrade_choices.clear()
 	mode = Mode.PLAYING
@@ -686,6 +802,7 @@ func _check_room_clear() -> void:
 				_log("Wave clear. Next wave incoming.")
 			return
 	room_clear = true
+	balance_tracker.clear_room(room_index)
 	_clear_projectile_nodes()
 	arrows.clear()
 	enemy_shots.clear()
@@ -705,6 +822,7 @@ func _update_wave_flow(delta: float) -> void:
 func _advance_room() -> void:
 	if room_index >= Constants.MAX_ROOMS:
 		mode = Mode.WON
+		balance_tracker.record_win()
 		_log("Chapter cleared. Press R for another run.")
 		return
 	room_index += 1
@@ -775,7 +893,7 @@ func _joystick_axis(touch_position: Vector2) -> Vector2:
 
 # 用途：計算玩家目前等級升到下一級所需的經驗值。
 func _xp_needed() -> int:
-	return 14 + int(player.level) * 8
+	return 22 + int(player.level) * 14
 
 
 # 用途：更新傷害與回血浮動文字的位置與生命週期。

@@ -1,6 +1,7 @@
 extends RefCounted
 
 const EnemyModel := preload("res://scripts/actors/enemy.gd")
+const Constants := preload("res://scripts/core/constants.gd")
 
 
 # 用途：繪製清場後的傳送門發光、旋轉光圈與方向提示。
@@ -37,16 +38,34 @@ static func draw_arrows(canvas: CanvasItem, arrows: Array) -> void:
 # 用途：繪製敵方子彈，使用紫紅色外圈與高亮核心區分玩家箭矢。
 static func draw_enemy_shots(canvas: CanvasItem, enemy_shots: Array) -> void:
 	for shot in enemy_shots:
-		canvas.draw_circle(shot.pos, 16.0, Color(1.0, 0.18, 0.82, 0.18))
-		canvas.draw_circle(shot.pos, 10.0, Color(0.08, 0.02, 0.12, 0.8))
-		canvas.draw_circle(shot.pos, 7.0, Color(1.0, 0.16, 0.78))
-		canvas.draw_circle(shot.pos + Vector2(-2, -2), 3.0, Color(1.0, 0.76, 1.0))
+		var style := String(shot.get("shot_style", "normal"))
+		var glow := Color(1.0, 0.18, 0.82, 0.18)
+		var core := Color(1.0, 0.16, 0.78)
+		var highlight := Color(1.0, 0.76, 1.0)
+		var visual_radius: float = shot.get("visual_radius", shot.get("radius", 7.0))
+		if style == "sweep":
+			glow = Color(1.0, 0.62, 0.16, 0.22)
+			core = Color(1.0, 0.52, 0.08)
+			highlight = Color(1.0, 0.94, 0.48)
+		elif style == "delayed":
+			glow = Color(0.24, 0.86, 1.0, 0.24)
+			core = Color(0.14, 0.72, 1.0)
+			highlight = Color(0.78, 1.0, 1.0)
+		glow = shot.get("glow_color", glow)
+		core = shot.get("core_color", core)
+		highlight = shot.get("highlight_color", highlight)
+		canvas.draw_circle(shot.pos, visual_radius + 9.0, glow)
+		canvas.draw_circle(shot.pos, visual_radius + 3.0, Color(0.08, 0.02, 0.12, 0.8))
+		canvas.draw_circle(shot.pos, visual_radius, core)
+		canvas.draw_circle(shot.pos + Vector2(-2, -2), max(2.5, visual_radius * 0.42), highlight)
 
 
 # 用途：繪製敵人外觀、眼睛與生命條。
 static func draw_enemies(canvas: CanvasItem, enemies: Array, elapsed: float, default_radius: float) -> void:
 	for enemy in enemies:
 		var color: Color = EnemyModel.color_for(enemy.kind)
+		if enemy.kind == "boss":
+			color = _boss_phase_color(int(enemy.get("boss_phase", 1)))
 		var radius: float = enemy.get("radius", default_radius)
 		var body_color: Color = Color(1.0, 0.96, 0.72) if float(enemy.get("hit_flash", 0.0)) > 0.0 else color
 		canvas.draw_circle(enemy.pos, radius + 7.0, Color(color.r, color.g, color.b, 0.22))
@@ -65,12 +84,35 @@ static func draw_boss_health(canvas: CanvasItem, enemies: Array) -> void:
 	if boss.is_empty():
 		return
 	var ratio: float = clampf(float(boss.hp) / float(boss.max_hp), 0.0, 1.0)
+	var phase: int = int(boss.get("boss_phase", 1))
 	var bar := Rect2(Vector2(74, 104), Vector2(392, 16))
+	var fill_color := Color(0.92, 0.12, 0.14)
+	if phase == 2:
+		fill_color = Color(1.0, 0.48, 0.12)
+	elif phase >= 3:
+		fill_color = Color(0.78, 0.22, 1.0)
 	canvas.draw_rect(bar.grow(5.0), Color(0.03, 0.02, 0.02, 0.78))
 	canvas.draw_rect(bar, Color(0.16, 0.05, 0.06))
-	canvas.draw_rect(Rect2(bar.position, Vector2(bar.size.x * ratio, bar.size.y)), Color(0.92, 0.12, 0.14))
+	canvas.draw_rect(Rect2(bar.position, Vector2(bar.size.x * ratio, bar.size.y)), fill_color)
+	_draw_boss_phase_mark(canvas, bar, Constants.BOSS_PHASE_TWO_RATIO)
+	_draw_boss_phase_mark(canvas, bar, Constants.BOSS_PHASE_THREE_RATIO)
 	canvas.draw_rect(bar, Color(1.0, 0.78, 0.36, 0.9), false, 2.0)
-	canvas.draw_string(ThemeDB.fallback_font, Vector2(76, 98), "BOSS", HORIZONTAL_ALIGNMENT_LEFT, -1, 16, Color(1.0, 0.86, 0.48))
+	canvas.draw_string(ThemeDB.fallback_font, Vector2(76, 98), "BOSS P%d" % phase, HORIZONTAL_ALIGNMENT_LEFT, -1, 16, Color(1.0, 0.86, 0.48))
+
+
+# 用途：在 Boss 血條上標出階段切換點。
+static func _draw_boss_phase_mark(canvas: CanvasItem, bar: Rect2, ratio: float) -> void:
+	var x: float = bar.position.x + bar.size.x * ratio
+	canvas.draw_line(Vector2(x, bar.position.y - 4.0), Vector2(x, bar.end.y + 4.0), Color(1.0, 0.9, 0.62, 0.78), 2.0)
+
+
+# 用途：取得 Boss 階段對應的主色，讓本體與血條同步變化。
+static func _boss_phase_color(phase: int) -> Color:
+	if phase >= 3:
+		return Color(0.56, 0.16, 0.82)
+	if phase == 2:
+		return Color(0.88, 0.28, 0.08)
+	return Color(0.58, 0.08, 0.12)
 
 
 # 用途：繪製玩家角色、武器線條、朝向標記與受傷閃爍效果。

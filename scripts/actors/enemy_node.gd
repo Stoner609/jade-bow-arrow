@@ -72,28 +72,6 @@ func update_spitter(player_position: Vector2, delta: float) -> void:
 	queue_redraw()
 
 
-# 用途：更新 Boss 與玩家之間的距離控制與散射節奏。
-func update_boss_position(player_position: Vector2, delta: float) -> Vector2:
-	if not active or enemy_data.is_empty():
-		return Vector2.ZERO
-	enemy_data.shoot_cd = max(0.0, float(enemy_data.shoot_cd) - delta)
-	var to_player: Vector2 = player_position - enemy_data.pos
-	if to_player.is_zero_approx():
-		return Vector2.ZERO
-	var distance: float = to_player.length()
-	if distance >= Constants.BOSS_ACTIVE_RANGE:
-		return to_player.normalized()
-	var direction := to_player.normalized()
-	if distance < Constants.BOSS_RETREAT_DISTANCE:
-		enemy_data.pos -= direction * float(enemy_data.speed) * Constants.BOSS_RETREAT_SPEED_SCALE * delta
-	elif distance > Constants.BOSS_APPROACH_DISTANCE:
-		enemy_data.pos += direction * float(enemy_data.speed) * delta
-	if enemy_data.shoot_cd <= 0.0:
-		spread_shot_requested.emit(enemy_data, direction, Constants.BOSS_SPREAD_COUNT, Constants.BOSS_SPREAD_ANGLE)
-	queue_redraw()
-	return direction
-
-
 # 用途：設定遠程敵人下一次射擊前的等待時間。
 func set_shoot_cooldown(cooldown: float) -> void:
 	if enemy_data.is_empty():

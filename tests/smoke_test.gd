@@ -43,7 +43,7 @@ func _run() -> void:
 		quit(1)
 		return
 	var late_wave: Array[String] = game.RoomManager.enemy_wave(7, 2, game.Constants.MAX_ROOMS)
-	if late_wave.count("crawler") != 12 or late_wave.count("spitter") != 2 or late_wave.count("runner") != 2 or late_wave.count("brute") != 1:
+	if late_wave.count("crawler") != 13 or late_wave.count("spitter") != 2 or late_wave.count("runner") != 2 or late_wave.count("brute") != 1:
 		push_error("Room wave table did not return the expected late-game composition.")
 		quit(1)
 		return
@@ -63,6 +63,18 @@ func _run() -> void:
 		push_error("Boss room layout should be configured without obstacles.")
 		quit(1)
 		return
+	var boss_ai = load("res://scripts/boss/boss_ai.gd")
+	for phase in boss_ai.PHASE_ATTACKS.keys():
+		for attack in boss_ai.PHASE_ATTACKS[phase]:
+			if String(attack.get("kind", "")) == "projectile" and int(attack.get("count", 1)) % 2 == 0:
+				push_error("Boss projectile counts should stay odd so center shots can target the player.")
+				quit(1)
+				return
+	var phase_two_sweep: Dictionary = boss_ai.PHASE_ATTACKS[2][1]
+	if String(phase_two_sweep.bullet.style) != "sweep" or not phase_two_sweep.has("warning"):
+		push_error("Phase 2 sweep should keep its warning and sweep bullet profile.")
+		quit(1)
+		return
 	var upgrades: Array[Dictionary] = game.UpgradeCatalog.choices(game.rng, 3)
 	if upgrades.size() != 3 or not upgrades[0].has("effect") or not upgrades[0].has("weight"):
 		push_error("Upgrade catalog should return weighted data-driven upgrades.")
@@ -70,13 +82,14 @@ func _run() -> void:
 		return
 	var upgrade_test_player: Dictionary = game.PlayerModel.create()
 	var power_upgrade := {"effect": {"stat": "power", "op": "add", "value": 4}}
+	var power_before: int = int(upgrade_test_player.power)
 	game.UpgradeCatalog.apply_upgrade(upgrade_test_player, power_upgrade)
-	if int(upgrade_test_player.power) != 17:
+	if int(upgrade_test_player.power) != power_before + 4:
 		push_error("Upgrade catalog did not apply a stat effect.")
 		quit(1)
 		return
 	var blood_arrow: Dictionary = game.UpgradeCatalog.UPGRADES.filter(func(upgrade: Dictionary) -> bool: return upgrade.id == "blood_arrow")[0]
-	if float(blood_arrow.effect.value) > 0.04 or float(blood_arrow.effect.max) > 0.12:
+	if float(blood_arrow.effect.value) > 0.03 or float(blood_arrow.effect.max) > 0.09:
 		push_error("Blood Arrow balance values are higher than expected.")
 		quit(1)
 		return
@@ -97,7 +110,7 @@ func _run() -> void:
 		push_error("Player scene node was not instantiated.")
 		quit(1)
 		return
-	if game.obstacles.is_empty():
+	if game.room_index < game.Constants.MAX_ROOMS and game.obstacles.is_empty():
 		push_error("Room obstacles were not generated.")
 		quit(1)
 		return
@@ -143,7 +156,12 @@ func _run() -> void:
 		push_error("Pickup scene node did not collect XP.")
 		quit(1)
 		return
+	if game.enemies.is_empty():
+		game._spawn_enemy("crawler")
 	var chase_enemy: Dictionary = game.enemies[0]
+	if game.enemies.is_empty():
+		game._spawn_enemy("crawler")
+		chase_enemy = game.enemies[0]
 	chase_enemy.kind = "crawler"
 	chase_enemy.pos = Vector2(260, 480)
 	game.player.pos = Vector2(340, 480)
@@ -195,6 +213,37 @@ func _run() -> void:
 		push_error("Boss scene node did not request a spread shot.")
 		quit(1)
 		return
+	chase_enemy.hp = int(float(chase_enemy.max_hp) * 0.35)
+	chase_enemy.shoot_cd = 0.0
+	chase_enemy.pos = Vector2(260, 480)
+	game.player.pos = Vector2(430, 480)
+	var phase_text_count_before: int = game.floating_texts.size()
+	var phase_shot_count_before: int = game.enemy_shots.size()
+	game._update_enemies(0.1)
+	if int(chase_enemy.get("boss_phase", 1)) != 3:
+		push_error("Boss scene node did not switch to phase 3 at low HP.")
+		quit(1)
+		return
+	if game.enemy_shots.size() < phase_shot_count_before + game.Constants.BOSS_PHASE_THREE_SPREAD_COUNT:
+		push_error("Boss phase 3 did not request the denser spread shot.")
+		quit(1)
+		return
+	if game.floating_texts.size() <= phase_text_count_before:
+		push_error("Boss phase change did not create a visible phase prompt.")
+		quit(1)
+		return
+	var delayed_attack: Dictionary = boss_ai.PHASE_ATTACKS[3][1]
+	if not delayed_attack.has("bullet") or float(delayed_attack.bullet.radius) <= 7.0:
+		push_error("Boss attack data does not include the expected bullet profile.")
+		quit(1)
+		return
+	var boss_profile_shot_count_before: int = game.enemy_shots.size()
+	game._fire_enemy_attack_pattern(chase_enemy.pos, Vector2.RIGHT, delayed_attack)
+	var profiled_shot: Dictionary = game.enemy_shots[boss_profile_shot_count_before]
+	if String(profiled_shot.shot_style) != "delayed" or float(profiled_shot.radius) <= 7.0 or int(profiled_shot.damage) <= 8 + game.room_index:
+		push_error("Boss bullet profile was not applied to generated projectiles.")
+		quit(1)
+		return
 	chase_enemy.hp = chase_enemy.max_hp
 	game.player.hp = 50
 	game.player.max_hp = 80
@@ -238,6 +287,9 @@ func _run() -> void:
 		push_error("Critical hit did not create distinct critical damage text.")
 		quit(1)
 		return
+	if game.enemies.is_empty():
+		game._spawn_enemy("crawler")
+		chase_enemy = game.enemies[0]
 	chase_enemy.kind = "crawler"
 	chase_enemy.hp = 1
 	chase_enemy.max_hp = 1
@@ -264,6 +316,8 @@ func _run() -> void:
 		quit(1)
 		return
 
+	game.room_index = 1
+	game._spawn_room()
 	var original_room: int = game.room_index
 	game.enemies.clear()
 	game.wave_index = game.total_waves
@@ -284,6 +338,10 @@ func _run() -> void:
 	game._spawn_room()
 	if game.total_waves != 1 or game.enemies.is_empty() or game.enemies[0].kind != "boss":
 		push_error("Boss room did not spawn the expected boss wave.")
+		quit(1)
+		return
+	if not game.enemies[0].node.has_method("update_boss_position"):
+		push_error("Boss room did not instantiate the dedicated Boss node.")
 		quit(1)
 		return
 

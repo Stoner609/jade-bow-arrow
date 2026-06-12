@@ -5,7 +5,7 @@ static func create() -> Dictionary:
 		"pos": Vector2.ZERO,
 		"hp": 80,
 		"max_hp": 80,
-		"power": 13,
+		"power": 130,
 		"level": 1,
 		"xp": 0,
 		"speed": 275.0,
@@ -23,7 +23,7 @@ static func create() -> Dictionary:
 static func reset(player: Dictionary, start_position: Vector2) -> void:
 	player.pos = start_position
 	player.hp = player.max_hp
-	player.power = 13
+	player.power = 130
 	player.level = 1
 	player.xp = 0
 	player.speed = 275.0

@@ -10,29 +10,29 @@ static func choose_kind(room_index: int, rng: RandomNumberGenerator) -> String:
 
 
 static func create(kind: String, room_index: int, position: Vector2, rng: RandomNumberGenerator) -> Dictionary:
-	var hp := 24 + room_index * 6
+	var hp := 30 + room_index * 9
 	var speed := 84.0 + room_index * 4.0
 	var touch := 9 + room_index
 	var radius := 19.0
 	if kind == "spitter":
-		hp = 19 + room_index * 5
+		hp = 24 + room_index * 7
 		speed = 74.0
 	elif kind == "runner":
-		hp = 18 + room_index * 5
+		hp = 24 + room_index * 7
 		speed = 132.0 + room_index * 4.0
 		touch = 8 + room_index
 	elif kind == "brute":
-		hp = 46 + room_index * 10
+		hp = 64 + room_index * 14
 		speed = 58.0
 		touch = 15 + room_index
 		radius = 22.0
 	elif kind == "boss":
-		hp = 280 + room_index * 28
+		hp = 1800 + room_index * 160
 		speed = 52.0
 		touch = 20 + room_index
 		radius = 32.0
 
-	return {
+	var enemy := {
 		"kind": kind,
 		"pos": position,
 		"hp": hp,
@@ -43,6 +43,10 @@ static func create(kind: String, room_index: int, position: Vector2, rng: Random
 		"hit_cd": 0.0,
 		"shoot_cd": rng.randf_range(0.4, 1.4)
 	}
+	if kind == "boss":
+		enemy["boss_phase"] = 1
+		enemy["boss_attack_index"] = 0
+	return enemy
 
 
 static func color_for(kind: String) -> Color:
